@@ -6,7 +6,10 @@ authors = ["Your Name <you@example.com>"]
 
 [tool.poetry.dependencies]
 python = ">=3.10.0,<3.12"
-discord-py = "^2.3.2"
+discord-py = "2.3.2"
+consultor = "^0.2.0"
+python-dotenv = "^1.0.1"
+aiosqlite = "^0.20.0"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
