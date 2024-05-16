@@ -10,6 +10,8 @@ discord-py = "2.3.2"
 consultor = "^0.2.0"
 python-dotenv = "^1.0.1"
 aiosqlite = "^0.20.0"
+disnake = "^2.9.1"
+requests = "^2.31.0"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md

@@ -1,61 +1,54 @@
-from typing import Final
+import discord
 import os
-from dotenv import load_dotenv
-from discord import Intents, Client, Message
-from responses import get_response
+import requests
+from discord import app_commands
+from discord.ext import commands
 
-# STEP 0: LOAD OUR TOKEN FROM SOMEWHERE SAFE
-load_dotenv()
-TOKEN: Final[str] = os.getenv('TOKEN')
+TOKEN = os.environ['TOKEN']
 
-# STEP 1: BOT SETUP
-intents: Intents = Intents.default()
-intents.message_content = True  # NOQA
-client: Client = Client(intents=intents)
+intents = discord.Intents.default()
+intents.members = True
 
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-# STEP 2: MESSAGE FUNCTIONALITY
-async def send_message(message: Message, user_message: str) -> None:
-    if not user_message:
-        print('(Message was empty because intents were not enabled probably)')
-        return
-
-    if is_private := user_message[0] == '?':
-        user_message = user_message[1:]
-
+@bot.event
+async def on_ready():
+    print("Bot is Up and Ready!")
     try:
-        response: str = get_response(user_message)
-        await message.author.send(response) if is_private else await message.channel.send(response)
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
     except Exception as e:
         print(e)
 
+@bot.tree.command(name="hello")
+async def hello(interaction: discord.Interaction):
+    await interaction.response.send_message(f"Hey {interaction.user.mention}! This is a slash command!", ephemeral=True)
 
-# STEP 3: HANDLING THE STARTUP FOR The BOT
-@client.event
-async def on_ready() -> None:
-    print(f'{client.user} is now running!')
+@bot.tree.command(name="say")
+@app_commands.describe(thing_to_say="What should I say?")
+async def say(interaction: discord.Interaction, thing_to_say: str):
+    await interaction.response.send_message(f"{thing_to_say}", ephemeral=True)
 
-
-# STEP 4: HANDLING INCOMING MESSAGES
-@client.event
-async def on_message(message: Message) -> None:
-    if message.author == client.user:
+@bot.tree.command(name="joke")
+@app_commands.describe(category="Choose a joke category: Programming, Misc, Dark, etc.")
+async def joke(interaction: discord.Interaction, category: str = "Any"):
+    # Validate the category
+    valid_categories = ["Programming", "Misc", "Dark", "Any"]
+    if category not in valid_categories:
+        await interaction.response.send_message(f"Invalid category! Please choose from {valid_categories}", ephemeral=True)
         return
 
-    username: str = str(message.author)
-    user_message: str = message.content
-    channel: str = str(message.channel)
+    # Fetch joke from the API
+    response = requests.get(f'https://v2.jokeapi.dev/joke/{category}')
+    if response.status_code == 200:
+        joke = response.json()
+        if joke['type'] == 'single':
+            joke_message = joke['joke']
+        else:
+            joke_message = f"{joke['setup']} - {joke['delivery']}"
+    else:
+        joke_message = "Failed to retrieve joke"
 
-    print(f'[{channel}] {username}: "{user_message}"')
-    await send_message(message, user_message)
+    await interaction.response.send_message(joke_message, ephemeral=True)
 
-
-# STEP 5: MAIN ENTRY POINT
-def main() -> None:
-    client.run(token=TOKEN)
-
-
-if __name__ == '__main__':
-    main()
-
-
+bot.run(TOKEN)
