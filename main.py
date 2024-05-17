@@ -3,9 +3,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands 
 
-from dice import roll_dice
-from jokes import get_jokes
-from memes import register_memes
+from src.dice import roll_dice
+from src.jokes import get_jokes
+from src.memes import register_memes
 
 TOKEN = os.getenv('TOKEN')
 
