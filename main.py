@@ -1,13 +1,20 @@
-import discord
 import os
+import discord
 from discord.ext import commands
-import jokes
+from discord import app_commands 
 
-TOKEN = os.environ['TOKEN']
+from dice import roll_dice
+from jokes import get_jokes
+from memes import register_memes
+
+TOKEN = os.getenv('TOKEN')
+
+if not TOKEN:
+    raise ValueError("No token provided. Please set the TOKEN environment variable.")
 
 intents = discord.Intents.default()
 intents.members = True
-
+intents.presences = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
@@ -24,11 +31,13 @@ async def hello(interaction: discord.Interaction):
     await interaction.response.send_message(f"Hey {interaction.user.mention}! This is a slash command!")
 
 @bot.tree.command(name="say")
-@app_commands.describe(thing_to_say="What should I say?")
-async def say(interaction: discord.Interaction, thing_to_say: str):
-    await interaction.response.send_message(f"{thing_to_say}")
+@app_commands.describe(something="What should I say?")
+async def say(interaction: discord.Interaction, something: str):
+    await interaction.response.send_message(f"{something}")
 
-# Register the commands from jokes.py
-jokes.setup(bot)
+# Register the commands from jokes.py, dice.py, and memes.py
+get_jokes(bot)
+roll_dice(bot)
+register_memes(bot)
 
 bot.run(TOKEN)
