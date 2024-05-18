@@ -8,7 +8,7 @@ from discord.ext import commands
 # Fetching Reddit API credentials from environment variables
 REDDIT_CLIENT_ID = os.getenv('REDDIT_CLIENT_ID')
 REDDIT_CLIENT_SECRET = os.getenv('REDDIT_CLIENT_SECRET')
-USER_AGENT = os.getenv('USER_AGENT') 
+USER_AGENT = os.getenv('USER_AGENT')  
 REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT})'
 
 # Initialize the Reddit instance
@@ -31,6 +31,7 @@ def get_random_post_info(posts):
         "subreddit": random_post.subreddit.display_name,
         "author": str(random_post.author),
         "created_utc": random_post.created_utc,
+        "image_url": random_post.url if random_post.url.endswith(('jpg', 'jpeg', 'png', 'gif')) else None
     }
     return post_info
 
@@ -54,6 +55,10 @@ def register_memes(bot: commands.Bot):
             embed.add_field(name="Score", value=post_info['score'])
             embed.add_field(name="Subreddit", value=post_info['subreddit'])
             embed.add_field(name="Author", value=post_info['author'])
+
+            # Add image to embed if available
+            if post_info['image_url']:
+                embed.set_image(url=post_info['image_url'])
 
             await interaction.response.send_message(embed=embed)
         except Exception as e:
