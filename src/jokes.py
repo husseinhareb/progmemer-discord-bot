@@ -6,7 +6,7 @@ from discord.ext import commands
 valid_categories = ["Programming", "Misc", "Dark", "Any"]
 
 def get_jokes(bot: commands.Bot):
-    @bot.tree.command(name="joke")
+    @bot.tree.command(name="joke",description="Get a random joke default: Programming")
     @app_commands.describe(category="Choose a joke category (optional)")
     @app_commands.choices(category=[
         app_commands.Choice(name="Programming", value="Programming"),
@@ -23,7 +23,7 @@ def get_jokes(bot: commands.Bot):
             if joke['type'] == 'single':
                 joke_message = joke['joke']
             else:
-                joke_message = f"{joke['setup']} - {joke['delivery']}"
+                joke_message = f"{joke['setup']} - **{joke['delivery']}**"
         except requests.RequestException as e:
             joke_message = "Failed to retrieve joke. Please try again later."
 
