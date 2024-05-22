@@ -13,6 +13,8 @@ aiosqlite = "^0.20.0"
 disnake = "^2.9.1"
 requests = "^2.31.0"
 praw = "7.7.1"
+youtube-dl = "2021.12.17"
+yt-dlp = "2024.4.9"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
