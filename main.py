@@ -2,13 +2,15 @@ import os
 import discord
 from discord.ext import commands
 from discord import app_commands
+from dotenv import load_dotenv
 
 from src.dice import roll_dice
 from src.jokes import get_jokes
 from src.memes import register_memes
 from src.weather import get_weather
-from src.youtube import register_play_command
+from src.music_cog import register_music
 
+load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
 if not TOKEN:
@@ -39,7 +41,7 @@ get_jokes(bot)
 roll_dice(bot)
 register_memes(bot)
 get_weather(bot)
-register_play_command(bot)
+register_music(bot)
 
 # Run the bot
 bot.run(TOKEN)

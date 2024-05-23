@@ -15,6 +15,11 @@ requests = "^2.31.0"
 praw = "7.7.1"
 youtube-dl = "2021.12.17"
 yt-dlp = "2024.4.9"
+pynacl = "1.5.0"
+pydub = "0.25.1"
+replit-ffmpeg = "0.4"
+youtube-search-python = "1.6.6"
+mkdocs-techdocs-core = "^1.3.5"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
