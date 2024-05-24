@@ -69,7 +69,7 @@ class MusicCog(commands.Cog):
                 await ctx.send("```Could not download the song. Incorrect format try another keyword. This could be due to playlist or a livestream format.```")
             else:
                 if self.is_playing:
-                    await ctx.send(f"**#{len(self.music_queue) + 2} -'{song['title']}'** added to the queue")
+                    await ctx.send(f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue")
                 else:
                     await ctx.send(f"**'{song['title']}'** added to the queue")
                 self.music_queue.append([song, voice_channel])
@@ -96,7 +96,7 @@ class MusicCog(commands.Cog):
 
     @commands.command(name="skip", aliases=["s"], help="Skips the current song being played")
     async def skip(self, ctx):
-        if self.vc is not None and self.vc:
+        if self.vc is not None and self.vc.is_playing():
             self.vc.stop()
             await self.play_music(ctx)
 
