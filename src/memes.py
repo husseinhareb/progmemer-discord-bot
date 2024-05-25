@@ -5,6 +5,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 REDDIT_CLIENT_ID = os.getenv('REDDIT_CLIENT_ID')
 REDDIT_CLIENT_SECRET = os.getenv('REDDIT_CLIENT_SECRET')
 USER_AGENT = os.getenv('USER_AGENT')

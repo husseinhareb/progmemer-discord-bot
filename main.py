@@ -5,12 +5,12 @@ from discord import app_commands
 from dotenv import load_dotenv
 import asyncio
 
-from dice import roll_dice
-from jokes import get_jokes
-from memes import register_memes
-from weather import get_weather
-from music import MusicCog
-from help_cog import HelpCog
+from src.dice import roll_dice
+from src.jokes import get_jokes
+from src.memes import register_memes
+from src.weather import get_weather
+from src.music import MusicCog
+from src.help_cog import HelpCog
 
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
@@ -55,8 +55,8 @@ get_weather(bot)
 
 async def main():
     async with bot:
-        await bot.add_cog(HelpCog(bot))  # Ensure HelpCog is awaited
-        await bot.add_cog(MusicCog(bot))  # Ensure MusicCog is awaited
+        await bot.add_cog(HelpCog(bot))  
+        await bot.add_cog(MusicCog(bot)) 
         await bot.start(TOKEN)
 
 asyncio.run(main())

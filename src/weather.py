@@ -5,7 +5,7 @@ from discord.ext import commands
 from discord import app_commands
 
 def fetch_weather(city):
-    api_key = os.getenv('WEATHER_API_KEY')
+    api_key = '2a33d8b44aa8d93d07feac453b4a79aa'
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
     response = requests.get(url)
     if response.status_code == 200:
