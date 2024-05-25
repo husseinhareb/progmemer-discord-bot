@@ -25,7 +25,7 @@ intents.guild_messages = True
 intents.guild_reactions = True
 intents.reactions = True
 intents.message_content = True
-intents.voice_states = True  # Add this line to include GUILD_VOICE_STATES
+intents.voice_states = True 
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
