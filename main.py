@@ -1,9 +1,10 @@
 import os
 import discord
+import asyncio
+
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
-import asyncio
 
 from src.dice import roll_dice
 from src.jokes import get_jokes
