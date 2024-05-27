@@ -36,6 +36,7 @@ class MusicCog(commands.Cog):
         else:
             await ctx_or_interaction.response.send_message(embed=embed)
 
+
     # searching the item on youtube
     def search_yt(self, item):
         if item.startswith("https://"):
@@ -118,7 +119,7 @@ class MusicCog(commands.Cog):
         try:
             voice_channel = author.voice.channel
         except AttributeError:
-            await self.send_embed(ctx_or_interaction, "You need to connect to a voice channel first!", title="Error")
+            await self.send_embed(ctx_or_interaction, "You need to connect to a voice channel first!", title="Error", color=discord.Color.red())
             return
 
         if self.is_paused:
@@ -126,12 +127,12 @@ class MusicCog(commands.Cog):
         else:
             song = self.search_yt(query)
             if song is None:
-                await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format try another keyword. This could be due to playlist or a livestream format.", title="Error")
+                await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format try another keyword. This could be due to playlist or a livestream format.", title="Error",color=discord.Color.red())
             else:
                 if self.is_playing:
-                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue")
+                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue",color=discord.Color.green())
                 else:
-                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**")
+                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**",color=discord.Color.green())
                     self.music_queue.append([song, voice_channel])
                     if not self.is_playing:
                         await self.play_music(ctx_or_interaction)
@@ -196,7 +197,7 @@ class MusicCog(commands.Cog):
             retval += f"#{i + 1} - {self.music_queue[i][0]['title']}\n"
 
         if retval != "":
-            await self.send_embed(ctx_or_interaction, f"**Queue:**\n{retval}")
+            await self.send_embed(ctx_or_interaction, f"**Queue:**\n{retval}",color=discord.Color.orange())
         else:
             await self.send_embed(ctx_or_interaction, "No music in queue", title="Queue")
 
@@ -238,9 +239,9 @@ class MusicCog(commands.Cog):
     async def _re(self, ctx_or_interaction):
         if len(self.music_queue) > 0:
             self.music_queue.pop()
-            await self.send_embed(ctx_or_interaction, "Last song removed")
+            await self.send_embed(ctx_or_interaction, "Last song removed",color=discord.Color.green())
         else:
-            await self.send_embed(ctx_or_interaction, "No songs in queue", title="Remove")
+            await self.send_embed(ctx_or_interaction, "No songs in queue", title="Remove",color=discord.Color.red())
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
