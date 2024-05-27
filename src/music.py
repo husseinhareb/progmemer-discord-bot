@@ -131,7 +131,7 @@ class MusicCog(commands.Cog):
                 if self.is_playing:
                     await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue")
                 else:
-                    await self.send_embed(ctx_or_interaction, f"**'{song['title']}'** added to the queue")
+                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**")
                     self.music_queue.append([song, voice_channel])
                     if not self.is_playing:
                         await self.play_music(ctx_or_interaction)
