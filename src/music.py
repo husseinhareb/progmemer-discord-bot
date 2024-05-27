@@ -4,6 +4,7 @@ from discord import app_commands
 from youtubesearchpython import VideosSearch
 from yt_dlp import YoutubeDL
 import asyncio
+from discord.ui import Button, View
 
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -23,6 +24,17 @@ class MusicCog(commands.Cog):
 
         self.vc = None
         self.ytdl = YoutubeDL(self.YDL_OPTIONS)
+
+    # Helper method to create and send embeds
+    async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple()):
+        embed = discord.Embed(description=description, color=color)
+        if title:
+            embed.title = title
+
+        if isinstance(ctx_or_interaction, commands.Context):
+            await ctx_or_interaction.send(embed=embed)
+        else:
+            await ctx_or_interaction.response.send_message(embed=embed)
 
     # searching the item on youtube
     def search_yt(self, item):
@@ -106,22 +118,23 @@ class MusicCog(commands.Cog):
         try:
             voice_channel = author.voice.channel
         except AttributeError:
-            await send("```You need to connect to a voice channel first!```")
+            await self.send_embed(ctx_or_interaction, "You need to connect to a voice channel first!", title="Error")
             return
+
         if self.is_paused:
             self.vc.resume()
         else:
             song = self.search_yt(query)
             if song is None:
-                await send("```Could not download the song. Incorrect format try another keyword. This could be due to playlist or a livestream format.```")
+                await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format try another keyword. This could be due to playlist or a livestream format.", title="Error")
             else:
                 if self.is_playing:
-                    await send(f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue")
+                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 2} - '{song['title']}'** added to the queue")
                 else:
-                    await send(f"**'{song['title']}'** added to the queue")
-                self.music_queue.append([song, voice_channel])
-                if not self.is_playing:
-                    await self.play_music(ctx_or_interaction)
+                    await self.send_embed(ctx_or_interaction, f"**'{song['title']}'** added to the queue")
+                    self.music_queue.append([song, voice_channel])
+                    if not self.is_playing:
+                        await self.play_music(ctx_or_interaction)
 
     @commands.command(name="pause", help="Pauses the current song being played")
     async def pause(self, ctx, *args):
@@ -183,9 +196,9 @@ class MusicCog(commands.Cog):
             retval += f"#{i + 1} - {self.music_queue[i][0]['title']}\n"
 
         if retval != "":
-            await ctx_or_interaction.response.send_message(f"```queue:\n{retval}```")
+            await self.send_embed(ctx_or_interaction, f"**Queue:**\n{retval}")
         else:
-            await ctx_or_interaction.response.send_message("```No music in queue```")
+            await self.send_embed(ctx_or_interaction, "No music in queue", title="Queue")
 
     @commands.command(name="clear", aliases=["c", "bin"], help="Stops the music and clears the queue")
     async def clear(self, ctx):
@@ -199,7 +212,7 @@ class MusicCog(commands.Cog):
         if self.vc is not None and self.is_playing:
             self.vc.stop()
         self.music_queue = []
-        await ctx_or_interaction.response.send_message("```Music queue cleared```")
+        await self.send_embed(ctx_or_interaction, "Music queue cleared")
 
     @commands.command(name="stop", aliases=["disconnect", "l", "d"], help="Kick the bot from VC")
     async def dc(self, ctx):
@@ -225,9 +238,9 @@ class MusicCog(commands.Cog):
     async def _re(self, ctx_or_interaction):
         if len(self.music_queue) > 0:
             self.music_queue.pop()
-            await ctx_or_interaction.response.send_message("```Last song removed```")
+            await self.send_embed(ctx_or_interaction, "Last song removed")
         else:
-            await ctx_or_interaction.response.send_message("```No songs in queue```")
+            await self.send_embed(ctx_or_interaction, "No songs in queue", title="Remove")
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
