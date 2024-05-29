@@ -19,10 +19,12 @@ class MusicCog(commands.Cog):
         self.vc = None
         self.ytdl = YoutubeDL(self.YDL_OPTIONS)
 
-    async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple()):
+    async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple(), thumbnail=None):
         embed = discord.Embed(description=description, color=color)
         if title:
             embed.title = title
+        if thumbnail:
+            embed.set_thumbnail(url=thumbnail)
         if isinstance(ctx_or_interaction, commands.Context):
             await ctx_or_interaction.send(embed=embed)
         else:
@@ -31,7 +33,7 @@ class MusicCog(commands.Cog):
     def search_yt(self, item):
         search = VideosSearch(item, limit=1)
         result = search.result()["result"][0]
-        return {'source': result["link"], 'title': result["title"]}
+        return {'source': result["link"], 'title': result["title"], 'thumbnail': result["thumbnails"][0]["url"]}
 
     async def play_next(self):
         if len(self.music_queue) > 0:
@@ -108,9 +110,9 @@ class MusicCog(commands.Cog):
             else:
                 self.music_queue.append([song, voice_channel])
                 if self.is_playing:
-                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** added to the queue", color=discord.Color.green())
+                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** added to the queue", color=discord.Color.green(), thumbnail=song['thumbnail'])
                 else:
-                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**", color=discord.Color.green())
+                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**", color=discord.Color.green(), thumbnail=song['thumbnail'])
                     await self.play_music(ctx_or_interaction)
 
     @commands.command(name="pause", help="Pauses the current song being played")
@@ -224,4 +226,3 @@ class MusicCog(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
-
