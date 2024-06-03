@@ -19,16 +19,19 @@ class MusicCog(commands.Cog):
         self.vc = None
         self.ytdl = YoutubeDL(self.YDL_OPTIONS)
 
-    async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple(), thumbnail=None):
+    async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple(), thumbnail=None, view=None):
         embed = discord.Embed(description=description, color=color)
         if title:
             embed.title = title
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
         if isinstance(ctx_or_interaction, commands.Context):
-            await ctx_or_interaction.send(embed=embed)
+            await ctx_or_interaction.send(embed=embed, view=view)
         else:
-            await ctx_or_interaction.response.send_message(embed=embed)
+            if view:
+                await ctx_or_interaction.response.send_message(embed=embed, view=view)
+            else:
+                await ctx_or_interaction.response.send_message(embed=embed)
 
     def search_yt(self, item):
         search = VideosSearch(item, limit=1)
@@ -109,10 +112,11 @@ class MusicCog(commands.Cog):
                 await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format or unsupported type. Please try another keyword.", title="Error", color=discord.Color.red())
             else:
                 self.music_queue.append([song, voice_channel])
+                view = MusicControlView(self)
                 if self.is_playing:
-                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** added to the queue", color=discord.Color.green(), thumbnail=song['thumbnail'])
+                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** added to the queue", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
                 else:
-                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**", color=discord.Color.green(), thumbnail=song['thumbnail'])
+                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
                     await self.play_music(ctx_or_interaction)
 
     @commands.command(name="pause", help="Pauses the current song being played")
@@ -128,7 +132,9 @@ class MusicCog(commands.Cog):
             self.is_playing = False
             self.is_paused = True
             self.vc.pause()
-            await self.send_embed(ctx_or_interaction, "Paused the current song", color=discord.Color.orange())
+            view = MusicControlView(self)
+            await self.update_button_state(view, play=True)
+            await self.send_embed(ctx_or_interaction, "Paused the current song", color=discord.Color.orange(), view=view)
 
     @commands.command(name="resume", help="Resumes playing with the Discord bot")
     async def resume(self, ctx):
@@ -143,7 +149,9 @@ class MusicCog(commands.Cog):
             self.is_paused = False
             self.is_playing = True
             self.vc.resume()
-            await self.send_embed(ctx_or_interaction, "Resumed the current song", color=discord.Color.green())
+            view = MusicControlView(self)
+            await self.update_button_state(view, play=False)
+            await self.send_embed(ctx_or_interaction, "Resumed the current song", color=discord.Color.green(), view=view)
 
     @commands.command(name="skip", help="Skips the current song being played")
     async def skip(self, ctx):
@@ -193,36 +201,49 @@ class MusicCog(commands.Cog):
         self.is_paused = False
         await self.send_embed(ctx_or_interaction, "Music queue cleared", color=discord.Color.green())
 
-    @commands.command(name="stop", help="Kick the bot from VC")
-    async def dc(self, ctx):
-        await self._dc(ctx)
+    @commands.command(name="stop", help="Stops the music and disconnects from the voice channel")
+    async def stop(self, ctx):
+        await self._stop(ctx)
 
-    @app_commands.command(name="stop", description="Kick the bot from VC")
-    async def slash_dc(self, interaction: discord.Interaction):
-        await self._dc(interaction)
+    @app_commands.command(name="stop", description="Stops the music and disconnects from the voice channel")
+    async def slash_stop(self, interaction: discord.Interaction):
+        await self._stop(interaction)
 
-    async def _dc(self, ctx_or_interaction):
+    async def _stop(self, ctx_or_interaction):
         self.is_playing = False
         self.is_paused = False
+        self.music_queue = []
         if self.vc is not None:
             await self.vc.disconnect()
             self.vc = None
-        await self.send_embed(ctx_or_interaction, "Disconnected from the voice channel", color=discord.Color.red())
+        await self.send_embed(ctx_or_interaction, "Stopped the music and disconnected from the voice channel", color=discord.Color.red())
 
-    @commands.command(name="remove", help="Removes last song added to queue")
-    async def re(self, ctx):
-        await self._re(ctx)
+    async def update_button_state(self, view, play):
+        for item in view.children:
+            if isinstance(item, discord.ui.Button):
+                if play:
+                    if item.emoji == "⏸️":
+                        item.style = discord.ButtonStyle.primary
+                        item.emoji = "▶️"
+                else:
+                    if item.emoji == "▶️":
+                        item.style = discord.ButtonStyle.primary
+                        item.emoji = "⏸️"
+class MusicControlView(discord.ui.View):
+    def __init__(self, cog):
+        super().__init__()
+        self.cog = cog
 
-    @app_commands.command(name="remove", description="Removes last song added to queue")
-    async def slash_re(self, interaction: discord.Interaction):
-        await self._re(interaction)
+    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.primary)
+    async def pause_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.defer()  # Defer the interaction to prevent "interaction failed"
+        await self.cog._pause(interaction)
+        await interaction.edit_original_response(view=self)
 
-    async def _re(self, ctx_or_interaction):
-        if len(self.music_queue) > 0:
-            removed_song = self.music_queue.pop()
-            await self.send_embed(ctx_or_interaction, f"Removed {removed_song[0]['title']} from the queue", color=discord.Color.green())
-        else:
-            await self.send_embed(ctx_or_interaction, "No songs in queue to remove", title="Remove", color=discord.Color.red())
-
+    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.primary)
+    async def skip_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await interaction.response.defer()  # Defer the interaction to prevent "interaction failed"
+        await self.cog._skip(interaction)
+        await interaction.edit_original_response(view=self)
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
