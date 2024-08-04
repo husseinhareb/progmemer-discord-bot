@@ -56,13 +56,19 @@ class MusicCog(commands.Cog):
             self.is_playing = True
             m_url = self.music_queue[0][0]['source']
             voice_channel = self.music_queue[0][1]
-            if self.vc is None or not self.vc.is_connected():
-                self.vc = await voice_channel.connect()
-                if self.vc is None:
-                    await self.send_embed(ctx_or_interaction, "Could not connect to the voice channel", title="Error", color=discord.Color.red())
-                    return
-            else:
-                await self.vc.move_to(voice_channel)
+            try:
+                if self.vc is None or not self.vc.is_connected():
+                    print("Attempting to connect to the voice channel...")
+                    self.vc = await voice_channel.connect()
+                    if self.vc is None:
+                        raise Exception("Failed to connect to the voice channel.")
+                else:
+                    print("Moving to the existing voice channel...")
+                    await self.vc.move_to(voice_channel)
+            except Exception as e:
+                print(f"Error connecting to the voice channel: {str(e)}")
+                await self.send_embed(ctx_or_interaction, f"Could not connect to the voice channel: {str(e)}", title="Error", color=discord.Color.red())
+                return
 
             self.music_queue.pop(0)
             loop = asyncio.get_running_loop()
@@ -229,6 +235,7 @@ class MusicCog(commands.Cog):
                     if item.emoji == "▶️":
                         item.style = discord.ButtonStyle.primary
                         item.emoji = "⏸️"
+
 class MusicControlView(discord.ui.View):
     def __init__(self, cog):
         super().__init__()
@@ -245,5 +252,6 @@ class MusicControlView(discord.ui.View):
         await interaction.response.defer()  # Defer the interaction to prevent "interaction failed"
         await self.cog._skip(interaction)
         await interaction.edit_original_response(view=self)
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
