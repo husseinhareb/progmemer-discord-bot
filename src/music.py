@@ -3,7 +3,10 @@ from discord.ext import commands
 from discord import app_commands
 from youtubesearchpython import VideosSearch
 from yt_dlp import YoutubeDL
+from bs4 import BeautifulSoup
 import asyncio
+import os
+import requests
 
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -11,6 +14,7 @@ class MusicCog(commands.Cog):
         self.is_playing = False
         self.is_paused = False
         self.music_queue = []
+        self.current_song = None
         self.YDL_OPTIONS = {'format': 'bestaudio/best'}
         self.FFMPEG_OPTIONS = {
             'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -41,8 +45,8 @@ class MusicCog(commands.Cog):
     async def play_next(self):
         if len(self.music_queue) > 0:
             self.is_playing = True
-            m_url = self.music_queue[0][0]['source']
-            self.music_queue.pop(0)
+            self.current_song = self.music_queue.pop(0)
+            m_url = self.current_song[0]['source']
             loop = asyncio.get_running_loop()
             data = await loop.run_in_executor(None, lambda: self.ytdl.extract_info(m_url, download=False))
             song = data['url']
@@ -50,27 +54,23 @@ class MusicCog(commands.Cog):
             self.vc.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop))
         else:
             self.is_playing = False
+            self.current_song = None
 
     async def play_music(self, ctx_or_interaction):
         if len(self.music_queue) > 0:
             self.is_playing = True
-            m_url = self.music_queue[0][0]['source']
-            voice_channel = self.music_queue[0][1]
+            self.current_song = self.music_queue.pop(0)
+            m_url = self.current_song[0]['source']
+            voice_channel = self.current_song[1]
             try:
                 if self.vc is None or not self.vc.is_connected():
-                    print("Attempting to connect to the voice channel...")
                     self.vc = await voice_channel.connect()
-                    if self.vc is None:
-                        raise Exception("Failed to connect to the voice channel.")
                 else:
-                    print("Moving to the existing voice channel...")
                     await self.vc.move_to(voice_channel)
             except Exception as e:
-                print(f"Error connecting to the voice channel: {str(e)}")
                 await self.send_embed(ctx_or_interaction, f"Could not connect to the voice channel: {str(e)}", title="Error", color=discord.Color.red())
                 return
 
-            self.music_queue.pop(0)
             loop = asyncio.get_running_loop()
             data = await loop.run_in_executor(None, lambda: self.ytdl.extract_info(m_url, download=False))
             song = data['url']
@@ -78,6 +78,7 @@ class MusicCog(commands.Cog):
             self.vc.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop))
         else:
             self.is_playing = False
+            self.current_song = None
 
     async def play_autocomplete(self, interaction: discord.Interaction, current: str):
         search = VideosSearch(current, limit=5)
@@ -173,6 +174,67 @@ class MusicCog(commands.Cog):
             await self.play_music(ctx_or_interaction)
             await self.send_embed(ctx_or_interaction, "Skipped the current song", color=discord.Color.green())
 
+    #Lyrics
+    @commands.command(name="lyrics", help="Prints the lyrics of the current song being played")
+    async def lyrics(self, ctx):
+        await self._lyrics(ctx)
+
+    @app_commands.command(name="lyrics", description="Prints the lyrics of the current song being played")
+    async def slash_lyrics(self, interaction: discord.Interaction):
+        await self._lyrics(interaction)
+
+
+    async def _lyrics(self, ctx_or_interaction):
+        # Check if there is a song currently being played
+        if self.vc is None or not self.vc.is_playing():
+            await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
+            return
+
+        # Get the current song's title and artist from the currently playing song
+        if self.current_song is None:
+            await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
+            return
+
+        song_title = self.current_song[0]['title']
+        song_artist = self.current_song[0].get('artist', 'Unknown Artist')  # Adjust if artist information is available
+
+        access_token = os.getenv('GENIUS_TOKEN')
+        headers = {
+            'Authorization': f'Bearer {access_token}'
+        }
+        search_url = 'https://api.genius.com/search'
+
+        # Search for the song
+        search_params = {
+            'q': f'{song_title} {song_artist}'
+        }
+        search_response = requests.get(search_url, headers=headers, params=search_params)
+        search_data = search_response.json()
+
+        if search_data['response']['hits']:
+            song_info = search_data['response']['hits'][0]['result']
+            song_path = song_info['path']
+
+            # Fetch the song page
+            song_url = f'https://genius.com{song_path}'
+            page_response = requests.get(song_url)
+
+            # Parse the HTML to extract lyrics
+            soup = BeautifulSoup(page_response.text, 'html.parser')
+            lyrics_div = soup.find('div', class_='lyrics')
+            if not lyrics_div:
+                lyrics_div = soup.find('div', class_='Lyrics__Root-sc-1ynbvzw-0')
+
+            if lyrics_div:
+                lyrics = lyrics_div.get_text(strip=True)
+                await self.send_embed(ctx_or_interaction, lyrics, title="Lyrics")
+            else:
+                await self.send_embed(ctx_or_interaction, "Lyrics not found.", title="Error", color=discord.Color.red())
+        else:
+            await self.send_embed(ctx_or_interaction, "Song not found.", title="Error", color=discord.Color.red())
+
+
+    
     @commands.command(name="queue", help="Displays the current songs in queue")
     async def queue(self, ctx):
         await self._queue(ctx)
@@ -205,6 +267,7 @@ class MusicCog(commands.Cog):
         self.music_queue = []
         self.is_playing = False
         self.is_paused = False
+        self.current_song = None
         await self.send_embed(ctx_or_interaction, "Music queue cleared", color=discord.Color.green())
 
     @commands.command(name="stop", help="Stops the music and disconnects from the voice channel")
@@ -219,6 +282,7 @@ class MusicCog(commands.Cog):
         self.is_playing = False
         self.is_paused = False
         self.music_queue = []
+        self.current_song = None
         if self.vc is not None:
             await self.vc.disconnect()
             self.vc = None
