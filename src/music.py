@@ -174,7 +174,7 @@ class MusicCog(commands.Cog):
             await self.play_music(ctx_or_interaction)
             await self.send_embed(ctx_or_interaction, "Skipped the current song", color=discord.Color.green())
 
-    #Lyrics
+    # Lyrics
     @commands.command(name="lyrics", help="Prints the lyrics of the current song being played")
     async def lyrics(self, ctx):
         await self._lyrics(ctx)
@@ -182,7 +182,6 @@ class MusicCog(commands.Cog):
     @app_commands.command(name="lyrics", description="Prints the lyrics of the current song being played")
     async def slash_lyrics(self, interaction: discord.Interaction):
         await self._lyrics(interaction)
-
 
     async def _lyrics(self, ctx_or_interaction):
         # Check if there is a song currently being played
@@ -195,8 +194,13 @@ class MusicCog(commands.Cog):
             await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
             return
 
-        song_title = self.current_song[0]['title']
-        song_artist = self.current_song[0].get('artist', 'Unknown Artist')  # Adjust if artist information is available
+        video_title = self.current_song[0]['title']
+
+        try:
+            artist_name, song_name = video_title.split(" - ", 1)
+        except ValueError:
+            await self.send_embed(ctx_or_interaction, "Could not extract artist and song name from the title.", title="Error", color=discord.Color.red())
+            return
 
         access_token = os.getenv('GENIUS_TOKEN')
         headers = {
@@ -206,7 +210,7 @@ class MusicCog(commands.Cog):
 
         # Search for the song
         search_params = {
-            'q': f'{song_title} {song_artist}'
+            'q': f'{song_name} {artist_name}'
         }
         search_response = requests.get(search_url, headers=headers, params=search_params)
         search_data = search_response.json()
@@ -227,14 +231,14 @@ class MusicCog(commands.Cog):
 
             if lyrics_div:
                 lyrics = lyrics_div.get_text(strip=True)
-                await self.send_embed(ctx_or_interaction, lyrics, title="Lyrics")
+                # Format lyrics to be more readable
+                formatted_lyrics = "\n".join([line.strip() for line in lyrics.splitlines() if line.strip()])
+                await self.send_embed(ctx_or_interaction, formatted_lyrics, title="Lyrics")
             else:
                 await self.send_embed(ctx_or_interaction, "Lyrics not found.", title="Error", color=discord.Color.red())
         else:
             await self.send_embed(ctx_or_interaction, "Song not found.", title="Error", color=discord.Color.red())
 
-
-    
     @commands.command(name="queue", help="Displays the current songs in queue")
     async def queue(self, ctx):
         await self._queue(ctx)
