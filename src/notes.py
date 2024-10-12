@@ -95,41 +95,28 @@ def update_task_status(task_id, new_status):
     conn.close()
     print(f"Task ID {task_id} status updated to '{new_status}'")
 
-# Command to add a task
 def add_note(bot: commands.Bot):
     @bot.tree.command(name="add", description="Add a task")
-    async def add_note(interaction: discord.Interaction, task: str):
-        user = interaction.user  # Get the user who triggered the command
-        user_id = user.id        # Get the user ID
-        username = user.name     # Get the username
+    async def add_note_(interaction: discord.Interaction, task: str):
+        await interaction.response.defer()  # Defers to prevent timeout
+        user = interaction.user
+        user_id = user.id
+        username = user.name
         today = date.today().isoformat()
 
-        # Add user to the database if not already there
         add_user_to_db(user_id, username)
-
-        # Delete old tasks for today before adding new ones
-        delete_tasks_for_date(today)
-
-        # Add task to the database for today's date with default status "to-do"
         add_task_to_db(task, user_id, today)
 
-        # Respond to the interaction
-        await interaction.response.send_message(f"Task '{task}' has been added for {username} with status 'to-do'.")
+        await interaction.followup.send(f"Task '{task}' has been added for {username} with status 'to-do'.")
 
-# Command to get the list of tasks
 def get_note(bot: commands.Bot):
     @bot.tree.command(name="list", description="List today's tasks")
     async def get_note_(interaction: discord.Interaction):
-        await interaction.response.defer()  # Defers the response to avoid timeout
-        print("Fetching tasks...")
-
+        await interaction.response.defer()  # Defers to prevent timeout
         user_id = interaction.user.id
-        today = date.today().isoformat()  # Get today's date in ISO format
+        today = date.today().isoformat()
         
-        tasks = get_tasks_by_user(user_id, today)  # Fetch tasks for today from the database
-        print("Tasks fetched:", tasks)
-
-        # Check if tasks exist for the user
+        tasks = get_tasks_by_user(user_id, today)
         if tasks:
             tasks_message = "\n".join(f"- {task} (Status: {status})" for task, status in tasks)
             await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
