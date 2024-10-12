@@ -40,7 +40,12 @@ class MusicCog(commands.Cog):
     def search_yt(self, item):
         search = VideosSearch(item, limit=1)
         result = search.result()["result"][0]
-        return {'source': result["link"], 'title': result["title"], 'thumbnail': result["thumbnails"][0]["url"]}
+        return {
+            'source': result["link"],
+            'title': result["title"],
+            'duration': result["duration"],  # Include duration here
+            'thumbnail': result["thumbnails"][0]["url"]
+        }
 
     async def play_next(self):
         if len(self.music_queue) > 0:
@@ -62,6 +67,9 @@ class MusicCog(commands.Cog):
             self.current_song = self.music_queue.pop(0)
             m_url = self.current_song[0]['source']
             voice_channel = self.current_song[1]
+            song_title = self.current_song[0]['title']
+            song_duration = self.current_song[0]['duration']  # Get the song duration
+
             try:
                 if self.vc is None or not self.vc.is_connected():
                     self.vc = await voice_channel.connect()
@@ -76,6 +84,9 @@ class MusicCog(commands.Cog):
             song = data['url']
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(song, **self.FFMPEG_OPTIONS))
             self.vc.play(source, after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(), self.bot.loop))
+
+            # Send embed showing the song title and duration
+            await self.send_embed(ctx_or_interaction, f"**{song_title}**\nDuration: {song_duration}", color=discord.Color.green(), thumbnail=self.current_song[0]['thumbnail'])
         else:
             self.is_playing = False
             self.current_song = None
@@ -121,9 +132,9 @@ class MusicCog(commands.Cog):
                 self.music_queue.append([song, voice_channel])
                 view = MusicControlView(self)
                 if self.is_playing:
-                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** added to the queue", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
+                    await self.send_embed(ctx_or_interaction, f"**#{len(self.music_queue) + 1} - '{song['title']}'** (Duration: {song['duration']}) added to the queue", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
                 else:
-                    await self.send_embed(ctx_or_interaction, f"**{song['title']}**", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
+                    await self.send_embed(ctx_or_interaction, f"**{song['title']}** (Duration: {song['duration']})", color=discord.Color.green(), thumbnail=song['thumbnail'], view=view)
                     await self.play_music(ctx_or_interaction)
 
     @commands.command(name="pause", help="Pauses the current song being played")
@@ -189,137 +200,88 @@ class MusicCog(commands.Cog):
             await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
             return
 
-        # Get the current song's title and artist from the currently playing song
-        if self.current_song is None:
-            await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
-            return
+        # Get the current song's title and search for lyrics
+        song_title = self.current_song[0]['title']
+        lyrics_url = f"https://genius.com/api/search/multi?text={song_title}"
 
-        video_title = self.current_song[0]['title']
+        response = requests.get(lyrics_url)
+        if response.status_code == 200:
+            data = response.json()
+            # Extract lyrics from the response
+            lyrics = data.get('response', {}).get('sections', [{}])[0].get('hits', [{}])[0].get('result', {}).get('lyrics_path', None)
 
-        try:
-            artist_name, song_name = video_title.split(" - ", 1)
-        except ValueError:
-            await self.send_embed(ctx_or_interaction, "Could not extract artist and song name from the title.", title="Error", color=discord.Color.red())
-            return
-
-        access_token = os.getenv('GENIUS_TOKEN')
-        headers = {
-            'Authorization': f'Bearer {access_token}'
-        }
-        search_url = 'https://api.genius.com/search'
-
-        # Search for the song
-        search_params = {
-            'q': f'{song_name} {artist_name}'
-        }
-        search_response = requests.get(search_url, headers=headers, params=search_params)
-        search_data = search_response.json()
-
-        if search_data['response']['hits']:
-            song_info = search_data['response']['hits'][0]['result']
-            song_path = song_info['path']
-
-            # Fetch the song page
-            song_url = f'https://genius.com{song_path}'
-            page_response = requests.get(song_url)
-
-            # Parse the HTML to extract lyrics
-            soup = BeautifulSoup(page_response.text, 'html.parser')
-            lyrics_div = soup.find('div', class_='lyrics')
-            if not lyrics_div:
-                lyrics_div = soup.find('div', class_='Lyrics__Root-sc-1ynbvzw-0')
-
-            if lyrics_div:
-                lyrics = lyrics_div.get_text(strip=True)
-                # Format lyrics to be more readable
-                formatted_lyrics = "\n".join([line.strip() for line in lyrics.splitlines() if line.strip()])
-                await self.send_embed(ctx_or_interaction, formatted_lyrics, title="Lyrics")
+            if lyrics:
+                lyrics_response = requests.get(lyrics)
+                soup = BeautifulSoup(lyrics_response.content, 'html.parser')
+                lyrics_text = soup.find('div', class_='Lyrics__Container-sc-1ynbvzw-6').get_text()
+                await self.send_embed(ctx_or_interaction, f"**Lyrics for '{song_title}':**\n\n{lyrics_text}", color=discord.Color.green())
             else:
                 await self.send_embed(ctx_or_interaction, "Lyrics not found.", title="Error", color=discord.Color.red())
         else:
-            await self.send_embed(ctx_or_interaction, "Song not found.", title="Error", color=discord.Color.red())
+            await self.send_embed(ctx_or_interaction, "Could not fetch lyrics.", title="Error", color=discord.Color.red())
 
-    @commands.command(name="queue", help="Displays the current songs in queue")
+    # Queue
+    @commands.command(name="queue", help="Displays the current song queue")
     async def queue(self, ctx):
         await self._queue(ctx)
 
-    @app_commands.command(name="queue", description="Displays the current songs in queue")
+    @app_commands.command(name="queue", description="Displays the current song queue")
     async def slash_queue(self, interaction: discord.Interaction):
         await self._queue(interaction)
 
     async def _queue(self, ctx_or_interaction):
         retval = ""
         for i in range(len(self.music_queue)):
-            retval += f"#{i + 1} - {self.music_queue[i][0]['title']}\n"
+            song_title = self.music_queue[i][0]['title']
+            song_duration = self.music_queue[i][0]['duration']  # Get duration here
+            retval += f"#{i + 1} - {song_title} ({song_duration})\n"  # Add duration here
 
         if retval:
             await self.send_embed(ctx_or_interaction, f"**Queue:**\n{retval}", color=discord.Color.orange())
         else:
             await self.send_embed(ctx_or_interaction, "No music in queue", title="Queue", color=discord.Color.red())
 
-    @commands.command(name="clear", help="Stops the music and clears the queue")
-    async def clear(self, ctx):
-        await self._clear(ctx)
-
-    @app_commands.command(name="clear", description="Stops the music and clears the queue")
-    async def slash_clear(self, interaction: discord.Interaction):
-        await self._clear(interaction)
-
-    async def _clear(self, ctx_or_interaction):
-        if self.vc is not None and self.is_playing:
-            self.vc.stop()
-        self.music_queue = []
-        self.is_playing = False
-        self.is_paused = False
-        self.current_song = None
-        await self.send_embed(ctx_or_interaction, "Music queue cleared", color=discord.Color.green())
-
-    @commands.command(name="stop", help="Stops the music and disconnects from the voice channel")
+    @commands.command(name="stop", help="Stops playing music and clears the queue")
     async def stop(self, ctx):
         await self._stop(ctx)
 
-    @app_commands.command(name="stop", description="Stops the music and disconnects from the voice channel")
+    @app_commands.command(name="stop", description="Stops playing music and clears the queue")
     async def slash_stop(self, interaction: discord.Interaction):
         await self._stop(interaction)
 
     async def _stop(self, ctx_or_interaction):
-        self.is_playing = False
-        self.is_paused = False
-        self.music_queue = []
-        self.current_song = None
         if self.vc is not None:
             await self.vc.disconnect()
-            self.vc = None
-        await self.send_embed(ctx_or_interaction, "Stopped the music and disconnected from the voice channel", color=discord.Color.red())
-
-    async def update_button_state(self, view, play):
-        for item in view.children:
-            if isinstance(item, discord.ui.Button):
-                if play:
-                    if item.emoji == "⏸️":
-                        item.style = discord.ButtonStyle.primary
-                        item.emoji = "▶️"
-                else:
-                    if item.emoji == "▶️":
-                        item.style = discord.ButtonStyle.primary
-                        item.emoji = "⏸️"
+        self.is_playing = False
+        self.is_paused = False
+        self.music_queue.clear()
+        self.current_song = None
+        await self.send_embed(ctx_or_interaction, "Stopped playing music and cleared the queue.", color=discord.Color.red())
 
 class MusicControlView(discord.ui.View):
-    def __init__(self, cog):
+    def __init__(self, bot: MusicCog):
         super().__init__()
-        self.cog = cog
+        self.bot = bot
 
-    @discord.ui.button(emoji="⏸️", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Pause", style=discord.ButtonStyle.primary)
     async def pause_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.defer()  # Defer the interaction to prevent "interaction failed"
-        await self.cog._pause(interaction)
-        await interaction.edit_original_response(view=self)
+        await self.bot._pause(interaction)
 
-    @discord.ui.button(emoji="⏭️", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="Resume", style=discord.ButtonStyle.success)
+    async def resume_button(self, button: discord.ui.Button, interaction: discord.Interaction):
+        await self.bot._resume(interaction)
+
+    @discord.ui.button(label="Skip", style=discord.ButtonStyle.danger)
     async def skip_button(self, button: discord.ui.Button, interaction: discord.Interaction):
-        await interaction.response.defer()  # Defer the interaction to prevent "interaction failed"
-        await self.cog._skip(interaction)
-        await interaction.edit_original_response(view=self)
+        await self.bot._skip(interaction)
+
+    async def update_button_state(self, view, play):
+        if play:
+            view.pause_button.disabled = True
+            view.resume_button.disabled = False
+        else:
+            view.pause_button.disabled = False
+            view.resume_button.disabled = True
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
