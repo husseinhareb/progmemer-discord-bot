@@ -5,8 +5,44 @@ from youtubesearchpython import VideosSearch
 from yt_dlp import YoutubeDL
 from bs4 import BeautifulSoup
 import asyncio
-import os
 import requests
+import re
+
+def extract_artist_and_song(title):
+    # Define regex patterns for common YouTube title formats
+    patterns = [
+        r'^(.*?)\s*-\s*(.*?)$',  # "Artist - Song"
+        r'^(.*?)\s*–\s*(.*?)$',  # "Artist – Song" (different dash)
+        r'^(.*?)\s*:\s*(.*?)$',  # "Artist : Song"
+        r'\"(.*?)\"\s*by\s*(.*?)$',  # '"Song" by Artist'
+        r'^(.*?)\s*\"(.*?)\"$',  # 'Artist "Song"'
+        r'^(.*?)\s*\((.*?)\)$',  # "Artist (Song)"
+    ]
+    
+    # Words to ignore in the title
+    ignore_words = [
+        "slowed", "sped up", "lyrics", "official", "audio", "video", "music video",
+        "remix", "cover", "live", "HD", "HQ"
+    ]
+    
+    # Remove ignore words from the title
+    clean_title = title
+    for word in ignore_words:
+        clean_title = re.sub(rf'\b{word}\b', '', clean_title, flags=re.IGNORECASE)
+    
+    # Trim extra spaces from the cleaned title
+    clean_title = ' '.join(clean_title.split())
+    
+    # Try each pattern to see if it matches
+    for pattern in patterns:
+        match = re.match(pattern, clean_title)
+        if match:
+            artist, song = match.groups()
+            # Return cleaned artist and song names
+            return artist.strip(), song.strip()
+
+    # If no pattern matches, return None
+    return None, None
 
 class MusicCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -46,6 +82,7 @@ class MusicCog(commands.Cog):
             'duration': result["duration"],  # Include duration here
             'thumbnail': result["thumbnails"][0]["url"]
         }
+    
 
     async def play_next(self):
         if len(self.music_queue) > 0:
@@ -194,31 +231,41 @@ class MusicCog(commands.Cog):
     async def slash_lyrics(self, interaction: discord.Interaction):
         await self._lyrics(interaction)
 
+
     async def _lyrics(self, ctx_or_interaction):
         # Check if there is a song currently being played
         if self.vc is None or not self.vc.is_playing():
             await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
             return
 
-        # Get the current song's title and search for lyrics
-        song_title = self.current_song[0]['title']
-        lyrics_url = f"https://genius.com/api/search/multi?text={song_title}"
+        print("hello")
+        print(self.current_song[0]['title'])
 
+        # Get the current song's title and search for lyrics
+        artist, song_title = extract_artist_and_song(self.current_song[0]['title'])
+
+        print(artist, song_title)
+
+        # Construct the lyrics API URL
+        lyrics_url = f"https://api.lyrics.ovh/v1/{artist}/{song_title}"
+        print(lyrics_url)
+
+        # Make the request to get lyrics
         response = requests.get(lyrics_url)
+
         if response.status_code == 200:
             data = response.json()
-            # Extract lyrics from the response
-            lyrics = data.get('response', {}).get('sections', [{}])[0].get('hits', [{}])[0].get('result', {}).get('lyrics_path', None)
 
+            # Extract lyrics directly from the response
+            lyrics = data.get('lyrics', None)
             if lyrics:
-                lyrics_response = requests.get(lyrics)
-                soup = BeautifulSoup(lyrics_response.content, 'html.parser')
-                lyrics_text = soup.find('div', class_='Lyrics__Container-sc-1ynbvzw-6').get_text()
-                await self.send_embed(ctx_or_interaction, f"**Lyrics for '{song_title}':**\n\n{lyrics_text}", color=discord.Color.green())
+                # Send the lyrics in an embed
+                await self.send_embed(ctx_or_interaction, f"**Lyrics for '{song_title}':**\n\n{lyrics}", color=discord.Color.green())
             else:
                 await self.send_embed(ctx_or_interaction, "Lyrics not found.", title="Error", color=discord.Color.red())
         else:
             await self.send_embed(ctx_or_interaction, "Could not fetch lyrics.", title="Error", color=discord.Color.red())
+
 
     # Queue
     @commands.command(name="queue", help="Displays the current song queue")
@@ -285,3 +332,5 @@ class MusicControlView(discord.ui.View):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(MusicCog(bot))
+
+
