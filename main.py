@@ -13,6 +13,7 @@ from src.weather import get_weather
 from src.music import MusicCog
 from src.help_cog import HelpCog
 from src.notes import add_note
+from src.notes import get_note
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
@@ -54,7 +55,7 @@ roll_dice(bot)
 register_memes(bot)
 get_weather(bot)
 add_note(bot)
-
+get_note(bot)
 async def main():
     async with bot:
         await bot.add_cog(HelpCog(bot))  

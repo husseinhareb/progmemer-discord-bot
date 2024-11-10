@@ -61,6 +61,17 @@ def add_user_to_db(user_id, username):
     conn.commit()
     conn.close()
 
+# Function to retrieve tasks by user
+def get_tasks_by_user(user_id):
+    conn = connect_to_db()
+    c = conn.cursor()
+    # Fetch tasks for the given user_id
+    c.execute("SELECT task FROM tasks WHERE user_id = ?", (user_id,))
+    tasks = c.fetchall()
+    conn.close()
+    # Return the tasks as a list of strings
+    return [task[0] for task in tasks]
+
 # Command to add a task
 async def add_note_command(interaction: discord.Interaction, task: str):
     user = interaction.user  # Get the user who triggered the command
@@ -80,3 +91,19 @@ def add_note(bot: commands.Bot):
     @app_commands.describe(task="The task to add")
     async def add_note_(interaction: discord.Interaction, task: str):
         await add_note_command(interaction, task)  # Await and pass interaction and task
+
+
+# Retrieve tasks and respond to user
+def get_note(bot: commands.Bot):
+    @bot.tree.command(name="get", description="List all tasks")
+    async def get_note_(interaction: discord.Interaction):
+        # Retrieve tasks for the user
+        user_id = interaction.user.id
+        tasks = get_tasks_by_user(user_id)
+
+        # Format the tasks into a message
+        if tasks:
+            tasks_message = "\n".join(f"- {task}" for task in tasks)
+            await interaction.response.send_message(f"Here are your tasks:\n{tasks_message}")
+        else:
+            await interaction.response.send_message("You have no tasks.")
