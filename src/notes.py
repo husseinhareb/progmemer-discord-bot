@@ -4,6 +4,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
+from datetime import date
 
 # Database connection and table creation
 def connect_to_db():
@@ -20,7 +21,9 @@ def connect_to_db():
         c.execute('''CREATE TABLE IF NOT EXISTS tasks (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         task TEXT NOT NULL,
-                        user_id INTEGER NOT NULL
+                        user_id INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        status TEXT DEFAULT 'to-do'
                     )''')
         c.execute('''CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY,
@@ -35,16 +38,17 @@ def connect_to_db():
     
     return conn
 
-def add_task_to_db(task, user_id):
+# Add a task for a specific user, date, and default status
+def add_task_to_db(task, user_id, task_date, status='to-do'):
     conn = connect_to_db()
     c = conn.cursor()
-    # Add task to tasks table and link to user
-    c.execute("INSERT INTO tasks (task, user_id) VALUES (?, ?)", (task, user_id))
-    
+    # Add task to tasks table with default status
+    c.execute("INSERT INTO tasks (task, user_id, date, status) VALUES (?, ?, ?, ?)", (task, user_id, task_date, status))
     conn.commit()
     conn.close()
-    print(f"Task '{task}' added for user {user_id}")
+    print(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date}")
 
+# Ensure user exists in database
 def add_user_to_db(user_id, username):
     conn = connect_to_db()
     c = conn.cursor()
@@ -61,49 +65,91 @@ def add_user_to_db(user_id, username):
     conn.commit()
     conn.close()
 
-# Function to retrieve tasks by user
-def get_tasks_by_user(user_id):
+# Retrieve tasks by user and date with status
+def get_tasks_by_user(user_id, task_date):
     conn = connect_to_db()
     c = conn.cursor()
-    # Fetch tasks for the given user_id
-    c.execute("SELECT task FROM tasks WHERE user_id = ?", (user_id,))
+    # Fetch tasks for the given user_id and date
+    c.execute("SELECT task, status FROM tasks WHERE user_id = ? AND date = ?", (user_id, task_date))
     tasks = c.fetchall()
     conn.close()
-    # Return the tasks as a list of strings
-    return [task[0] for task in tasks]
+    # Return tasks as a list of tuples (task, status)
+    return [(task[0], task[1]) for task in tasks]
+
+# Delete all tasks for the given date
+def delete_tasks_for_date(task_date):
+    conn = connect_to_db()
+    c = conn.cursor()
+    c.execute("DELETE FROM tasks WHERE date = ?", (task_date,))
+    conn.commit()
+    conn.close()
+    print(f"Deleted tasks for date {task_date}")
+
+# Update the status of a specific task
+def update_task_status(task_id, new_status):
+    conn = connect_to_db()
+    c = conn.cursor()
+    # Update task status
+    c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
+    conn.commit()
+    conn.close()
+    print(f"Task ID {task_id} status updated to '{new_status}'")
 
 # Command to add a task
-async def add_note_command(interaction: discord.Interaction, task: str):
-    user = interaction.user  # Get the user who triggered the command
-    user_id = user.id        # Get the user ID
-    username = user.name     # Get the username
-    # Add user to the database if not already there
-    add_user_to_db(user_id, username)
-
-    # Add task to the database
-    add_task_to_db(task, user_id)
-
-    # Respond to the interaction
-    await interaction.response.send_message(f"Task '{task}' has been added for {username}.")
-
 def add_note(bot: commands.Bot):
     @bot.tree.command(name="add", description="Add a task")
-    @app_commands.describe(task="The task to add")
-    async def add_note_(interaction: discord.Interaction, task: str):
-        await add_note_command(interaction, task)  # Await and pass interaction and task
+    async def add_note(interaction: discord.Interaction, task: str):
+        user = interaction.user  # Get the user who triggered the command
+        user_id = user.id        # Get the user ID
+        username = user.name     # Get the username
+        today = date.today().isoformat()
 
+        # Add user to the database if not already there
+        add_user_to_db(user_id, username)
 
-# Retrieve tasks and respond to user
+        # Delete old tasks for today before adding new ones
+        delete_tasks_for_date(today)
+
+        # Add task to the database for today's date with default status "to-do"
+        add_task_to_db(task, user_id, today)
+
+        # Respond to the interaction
+        await interaction.response.send_message(f"Task '{task}' has been added for {username} with status 'to-do'.")
+
+# Command to get the list of tasks
 def get_note(bot: commands.Bot):
-    @bot.tree.command(name="get", description="List all tasks")
+    @bot.tree.command(name="list", description="List today's tasks")
     async def get_note_(interaction: discord.Interaction):
-        # Retrieve tasks for the user
-        user_id = interaction.user.id
-        tasks = get_tasks_by_user(user_id)
+        await interaction.response.defer()  # Defers the response to avoid timeout
+        print("Fetching tasks...")
 
-        # Format the tasks into a message
+        user_id = interaction.user.id
+        today = date.today().isoformat()  # Get today's date in ISO format
+        
+        tasks = get_tasks_by_user(user_id, today)  # Fetch tasks for today from the database
+        print("Tasks fetched:", tasks)
+
+        # Check if tasks exist for the user
         if tasks:
-            tasks_message = "\n".join(f"- {task}" for task in tasks)
-            await interaction.response.send_message(f"Here are your tasks:\n{tasks_message}")
+            tasks_message = "\n".join(f"- {task} (Status: {status})" for task, status in tasks)
+            await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
         else:
-            await interaction.response.send_message("You have no tasks.")
+            await interaction.followup.send("You have no tasks for today.")
+
+
+# Command to update the status of a task
+async def update_status_command(interaction: discord.Interaction, task_id: int, status: str):
+    valid_statuses = ["to-do", "working on it", "completed"]
+    if status.lower() not in valid_statuses:
+        await interaction.response.send_message(f"Invalid status. Choose one of: {', '.join(valid_statuses)}")
+        return
+
+    # Update the task status in the database
+    update_task_status(task_id, status)
+    await interaction.response.send_message(f"Task ID {task_id} status updated to '{status}'.")
+
+def update_status(bot: commands.Bot):
+    @bot.tree.command(name="update_status", description="Update the status of a task")
+    @app_commands.describe(task_id="The ID of the task to update", status="The new status for the task")
+    async def update_status_(interaction: discord.Interaction, task_id: int, status: str):
+        await update_status_command(interaction, task_id, status)
