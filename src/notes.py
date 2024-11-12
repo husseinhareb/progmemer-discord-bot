@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
-from datetime import date
+from datetime import date, timedelta
 from discord.ui import Select, View
 
 
@@ -85,15 +85,6 @@ def get_tasks_by_user(user_id, task_date):
     # Return tasks as a list of tuples (task, status)
     return [(task[0], task[1]) for task in tasks]
 
-# Delete all tasks for the given date
-def delete_tasks_for_date(task_date):
-    conn = connect_to_db()
-    c = conn.cursor()
-    c.execute("DELETE FROM tasks WHERE date = ?", (task_date,))
-    conn.commit()
-    conn.close()
-    print(f"Deleted tasks for date {task_date}")
-
 # Update the status of a specific task
 def update_task_status(task, new_status):
     conn = connect_to_db()
@@ -142,44 +133,47 @@ def add_note(bot: commands.Bot):
         await interaction.followup.send(f"Task '{task}' has been added for {username} with status 'to-do'.")
 
 
-# Command to list tasks with numbers
+# Command to list tasks with separate day, month, and year parameters
 def get_note(bot: commands.Bot):
-    @bot.tree.command(name="list", description="List today's tasks")
-    async def get_note_(interaction: discord.Interaction):
-        await interaction.response.defer()  # Defers to prevent timeout
+    @bot.tree.command(name="list", description="List tasks for a specific date or today's tasks if no date is provided")
+    async def get_note_(interaction: discord.Interaction, day: int = None, month: int = None, year: int = None):
+        await interaction.response.defer()  # Prevent timeout
+
+        # Get today's date and use it as a default if parameters are not provided
+        today = date.today()
+        task_day = day if day is not None else today.day
+        task_month = month if month is not None else today.month
+        task_year = year if year is not None else today.year
+        
+        # Construct the date string in 'YYYY-MM-DD' format
+        try:
+            task_date = date(task_year, task_month, task_day).isoformat()
+        except ValueError:
+            await interaction.followup.send("Invalid date provided. Please check the day, month, and year.")
+            return
+
         user_id = interaction.user.id
-        today = date.today().isoformat()
-        
-        tasks = get_tasks_by_user(user_id, today)
-        
-        # Create a dictionary to map statuses to emojis
-        status_emojis = {
-            "to-do": "⬜",  # Empty checkbox
-            "working on it": "🔄",  # Refresh/Arrow (working on it)
-            "completed": "✅"  # Green checkmark
-        }
+        tasks = get_tasks_by_user(user_id, task_date)
 
         if tasks:
             tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(status, '❓')} {task}" 
                                      for index, (task, status) in enumerate(tasks))
-            await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
+            await interaction.followup.send(f"Here are your tasks for {task_date}:\n{tasks_message}")
         else:
-            await interaction.followup.send("You have no tasks for today.")
-
-
+            await interaction.followup.send(f"You have no tasks for {task_date}.")
 
 # Command to update the status of a task
 async def update_task_status_command(interaction: discord.Interaction, task_index: int, status: str):
     user_id = interaction.user.id
     today = date.today().isoformat()
-    
+
     # Get the user's tasks
     tasks = get_tasks_by_user(user_id, today)
-    
+
     if not tasks:
         await interaction.response.send_message("You have no tasks for today.")
         return
-    
+
     # Validate task selection
     if task_index < 0 or task_index >= len(tasks):
         await interaction.response.send_message("Invalid task selection.")
@@ -226,7 +220,7 @@ class StatusSelect(Select):
 
 # Command to update the status of a task
 def update_status(bot: commands.Bot):
-    @bot.tree.command(name="update_status", description="Update the status of a task")
+    @bot.tree.command(name="update", description="Update the status of a task")
     async def update_status_(interaction: discord.Interaction):
         user_id = interaction.user.id
         today = date.today().isoformat()
@@ -263,4 +257,3 @@ def update_status(bot: commands.Bot):
 
         # Send the message asking to select a task
         await interaction.response.send_message("Please select the task you want to update:", view=view)
-
