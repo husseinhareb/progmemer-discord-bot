@@ -117,8 +117,17 @@ def get_note(bot: commands.Bot):
         today = date.today().isoformat()
         
         tasks = get_tasks_by_user(user_id, today)
+        
+        # Create a dictionary to map statuses to emojis
+        status_emojis = {
+            "to-do": "⬜",  # Empty checkbox
+            "working on it": "🔄",  # Refresh/Arrow (working on it)
+            "completed": "✅"  # Green checkmark
+        }
+
+
         if tasks:
-            tasks_message = "\n".join(f"- {task} (Status: {status})" for task, status in tasks)
+            tasks_message = "\n".join(f"-{status_emojis.get(status, '❓')} {task}" for task, status in tasks)
             await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
         else:
             await interaction.followup.send("You have no tasks for today.")
