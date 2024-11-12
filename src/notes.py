@@ -5,6 +5,15 @@ from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
 from datetime import date
+from discord.ui import Select, View
+
+
+# Global dictionary for status emojis
+status_emojis = {
+    "to-do": "⬜",  # Empty checkbox
+    "working on it": "🔄",  # Refresh/Arrow (working on it)
+    "completed": "✅"  # Green checkmark
+}
 
 # Database connection and table creation
 def connect_to_db():
@@ -109,6 +118,8 @@ def add_note(bot: commands.Bot):
 
         await interaction.followup.send(f"Task '{task}' has been added for {username} with status 'to-do'.")
 
+
+# Command to list tasks with numbers
 def get_note(bot: commands.Bot):
     @bot.tree.command(name="list", description="List today's tasks")
     async def get_note_(interaction: discord.Interaction):
@@ -125,27 +136,94 @@ def get_note(bot: commands.Bot):
             "completed": "✅"  # Green checkmark
         }
 
-
         if tasks:
-            tasks_message = "\n".join(f"-{status_emojis.get(status, '❓')} {task}" for task, status in tasks)
+            tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(status, '❓')} {task}" 
+                                     for index, (task, status) in enumerate(tasks))
             await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
         else:
             await interaction.followup.send("You have no tasks for today.")
 
 
+
 # Command to update the status of a task
-async def update_status_command(interaction: discord.Interaction, task_id: int, status: str):
-    valid_statuses = ["to-do", "working on it", "completed"]
-    if status.lower() not in valid_statuses:
-        await interaction.response.send_message(f"Invalid status. Choose one of: {', '.join(valid_statuses)}")
+async def update_task_status_command(interaction: discord.Interaction, task_index: int, status: str):
+    user_id = interaction.user.id
+    today = date.today().isoformat()
+    
+    # Get the user's tasks
+    tasks = get_tasks_by_user(user_id, today)
+    
+    if not tasks:
+        await interaction.response.send_message("You have no tasks for today.")
+        return
+    
+    # Validate task selection
+    if task_index < 0 or task_index >= len(tasks):
+        await interaction.response.send_message("Invalid task selection.")
         return
 
-    # Update the task status in the database
-    update_task_status(task_id, status)
-    await interaction.response.send_message(f"Task ID {task_id} status updated to '{status}'.")
+    # Update the task status
+    task, _ = tasks[task_index]  # Get the selected task
+    update_task_status(task, status)  # Update the task status in the database
 
+    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'.")
+
+class StatusSelect(Select):
+    def __init__(self, tasks, task_index: int):
+        self.tasks = tasks
+        self.task_index = task_index
+        
+        # Create status options for the dropdown
+        options = [
+            discord.SelectOption(label="To-Do", value="to-do", emoji="⬜"),
+            discord.SelectOption(label="Working on it", value="working on it", emoji="🔄"),
+            discord.SelectOption(label="Completed", value="completed", emoji="✅")
+        ]
+        
+        super().__init__(placeholder="Select task status", options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        # Get the selected status
+        status = self.values[0]
+        await update_task_status_command(interaction, self.task_index, status)
+
+# Command to update the status of a task
 def update_status(bot: commands.Bot):
     @bot.tree.command(name="update_status", description="Update the status of a task")
-    @app_commands.describe(task_id="The ID of the task to update", status="The new status for the task")
-    async def update_status_(interaction: discord.Interaction, task_id: int, status: str):
-        await update_status_command(interaction, task_id, status)
+    async def update_status_(interaction: discord.Interaction):
+        user_id = interaction.user.id
+        today = date.today().isoformat()
+
+        # Get the user's tasks for today
+        tasks = get_tasks_by_user(user_id, today)
+        
+        if not tasks:
+            await interaction.response.send_message("You have no tasks for today.")
+            return
+        
+        # Create dropdown options with task names and numbers
+        task_options = [
+            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
+            for index, (task, status) in enumerate(tasks)
+        ]
+        
+        # Create a select dropdown for task selection
+        task_select = Select(placeholder="Select a task to update", options=task_options)
+        view = View()
+        view.add_item(task_select)
+        
+        # Once a task is selected, show the status update dropdown
+        async def task_select_callback(interaction: discord.Interaction):
+            selected_task_index = int(task_select.values[0])
+            # Create and send the status dropdown
+            status_select = StatusSelect(tasks=tasks, task_index=selected_task_index)
+            status_view = View()
+            status_view.add_item(status_select)
+            await interaction.response.send_message(f"Please select the new status for '{tasks[selected_task_index][0]}'.", view=status_view)
+        
+        # Set the callback to handle task selection
+        task_select.callback = task_select_callback
+
+        # Send the message asking to select a task
+        await interaction.response.send_message("Please select the task you want to update:", view=view)
+

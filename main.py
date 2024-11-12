@@ -14,6 +14,7 @@ from src.music import MusicCog
 from src.help_cog import HelpCog
 from src.notes import add_note
 from src.notes import get_note
+from src.notes import update_status
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
@@ -56,6 +57,7 @@ register_memes(bot)
 get_weather(bot)
 add_note(bot)
 get_note(bot)
+update_status(bot)
 async def main():
     async with bot:
         await bot.add_cog(HelpCog(bot))  
