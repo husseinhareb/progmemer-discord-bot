@@ -95,14 +95,37 @@ def delete_tasks_for_date(task_date):
     print(f"Deleted tasks for date {task_date}")
 
 # Update the status of a specific task
-def update_task_status(task_id, new_status):
+def update_task_status(task, new_status):
     conn = connect_to_db()
     c = conn.cursor()
+
+    # Check if the task exists in the database before updating
+    c.execute("SELECT id FROM tasks WHERE task = ? AND status != ?", (task, new_status))
+    task_record = c.fetchone()
+
+    if task_record is None:
+        print(f"Task '{task}' either does not exist or is already set to '{new_status}'.")
+        conn.close()
+        return
+
+    # Get the task ID based on the task name (this is the way we can update it)
+    c.execute("SELECT id FROM tasks WHERE task = ?", (task,))
+    task_id = c.fetchone()[0]
+
     # Update task status
     c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
     conn.commit()
+
+    # Check if the task was updated successfully
+    c.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
+    updated_status = c.fetchone()[0]
+
+    if updated_status == new_status:
+        print(f"Task '{task}' successfully updated to status '{new_status}'.")
+    else:
+        print(f"Failed to update task '{task}' to status '{new_status}'.")
+
     conn.close()
-    print(f"Task ID {task_id} status updated to '{new_status}'")
 
 def add_note(bot: commands.Bot):
     @bot.tree.command(name="add", description="Add a task")
@@ -162,11 +185,25 @@ async def update_task_status_command(interaction: discord.Interaction, task_inde
         await interaction.response.send_message("Invalid task selection.")
         return
 
-    # Update the task status
+    # Get the selected task
     task, _ = tasks[task_index]  # Get the selected task
-    update_task_status(task, status)  # Update the task status in the database
 
-    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'.")
+    # Update the task status in the database
+    update_task_status(task, status)  # Make sure this function updates the task correctly
+
+    # Fetch the updated task list
+    tasks = get_tasks_by_user(user_id, today)  # Re-fetch tasks to reflect updated status
+    
+    # Confirm status update
+    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'. Here are your updated tasks:")
+    
+    # Format the updated tasks list
+    tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(status, '❓')} {task}" 
+                             for index, (task, status) in enumerate(tasks))
+    
+    # Send the updated tasks list
+    await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
+
 
 class StatusSelect(Select):
     def __init__(self, tasks, task_index: int):
