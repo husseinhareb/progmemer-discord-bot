@@ -257,3 +257,75 @@ def update_status(bot: commands.Bot):
 
         # Send the message asking to select a task
         await interaction.response.send_message("Please select the task you want to update:", view=view)
+
+
+# Function to remove a task by index
+def remove_task_from_db(user_id, task_index, task_date):
+    conn = connect_to_db()
+    c = conn.cursor()
+    
+    # Fetch tasks for the user and date to confirm the task index
+    tasks = get_tasks_by_user(user_id, task_date)
+    
+    if not tasks:
+        conn.close()
+        return None  # No tasks to remove
+    
+    if task_index < 0 or task_index >= len(tasks):
+        conn.close()
+        return "Invalid task selection."
+    
+    # Get the task name by index
+    task_name, _ = tasks[task_index]
+    
+    # Delete the task from the database
+    c.execute("DELETE FROM tasks WHERE user_id = ? AND task = ? AND date = ?", (user_id, task_name, task_date))
+    conn.commit()
+    conn.close()
+    
+    return f"Task '{task_name}' has been removed."
+
+# Command to remove a to-do task
+def remove_task(bot: commands.Bot):
+    @bot.tree.command(name="remove", description="Remove a to-do task for today")
+    async def remove_task_(interaction: discord.Interaction):
+        user_id = interaction.user.id
+        today = date.today().isoformat()
+        
+        # Fetch tasks for today
+        tasks = get_tasks_by_user(user_id, today)
+        
+        if not tasks:
+            await interaction.response.send_message("You have no tasks for today.")
+            return
+        
+        # Create dropdown options with task names and numbers
+        task_options = [
+            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
+            for index, (task, status) in enumerate(tasks)
+        ]
+        
+        # Create a select dropdown for task selection
+        task_select = Select(placeholder="Select a task to remove", options=task_options)
+        view = View()
+        view.add_item(task_select)
+        
+        # Callback to handle task selection and removal
+        async def task_select_callback(interaction: discord.Interaction):
+            selected_task_index = int(task_select.values[0])
+            
+            # Remove the selected task from the database
+            result = remove_task_from_db(user_id, selected_task_index, today)
+            
+            if result is None:
+                await interaction.response.send_message("Error: No tasks available to remove.")
+            elif result == "Invalid task selection.":
+                await interaction.response.send_message(result)
+            else:
+                await interaction.response.send_message(result)
+        
+        # Set the callback for task selection
+        task_select.callback = task_select_callback
+
+        # Send the message to prompt task selection
+        await interaction.response.send_message("Please select the task you want to remove:", view=view)
