@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import discord
+import asyncio
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
@@ -329,3 +330,83 @@ def remove_task(bot: commands.Bot):
 
         # Send the message to prompt task selection
         await interaction.response.send_message("Please select the task you want to remove:", view=view)
+
+
+def edit_task_from_db(user_id, task_index, task_date, new_task_description):
+    conn = connect_to_db()
+    c = conn.cursor()
+
+    # Fetch tasks for the user and date to confirm the task index
+    tasks = get_tasks_by_user(user_id, task_date)
+    
+    if not tasks:
+        conn.close()
+        return None  # No tasks to edit
+    
+    if task_index < 0 or task_index >= len(tasks):
+        conn.close()
+        return "Invalid task selection."
+    
+    # Get the task name by index
+    task_name, status = tasks[task_index]
+    
+    # Update the task description
+    c.execute("UPDATE tasks SET task = ? WHERE user_id = ? AND task = ? AND date = ?", 
+              (new_task_description, user_id, task_name, task_date))
+    conn.commit()
+    conn.close()
+    
+    return f"Task '{task_name}' has been updated to '{new_task_description}'."
+
+def edit_task(bot: commands.Bot):
+    @bot.tree.command(name="edit", description="Edit a task description")
+    async def edit_task_(interaction: discord.Interaction):
+        user_id = interaction.user.id
+        today = date.today().isoformat()
+        
+        # Fetch tasks for today
+        tasks = get_tasks_by_user(user_id, today)
+        
+        if not tasks:
+            await interaction.response.send_message("You have no tasks for today.")
+            return
+        
+        # Create dropdown options with task names and numbers
+        task_options = [
+            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
+            for index, (task, status) in enumerate(tasks)
+        ]
+        
+        # Create a select dropdown for task selection
+        task_select = Select(placeholder="Select a task to edit", options=task_options)
+        view = View()
+        view.add_item(task_select)
+        
+        # Callback to handle task selection and editing
+        async def task_select_callback(interaction: discord.Interaction):
+            selected_task_index = int(task_select.values[0])
+            
+            # Ask the user for the new task description
+            await interaction.response.send_message(f"Please enter the new description for the task:")
+            
+            # Wait for the user to provide the new task description
+            def check(m):
+                return m.author == interaction.user and isinstance(m.channel, discord.TextChannel)
+            
+            try:
+                msg = await bot.wait_for('message', check=check, timeout=60)  # 60 seconds timeout
+                new_task_description = msg.content
+                
+                # Update the task description in the database
+                result = edit_task_from_db(user_id, selected_task_index, today, new_task_description)
+                
+                await interaction.followup.send(result)
+            
+            except asyncio.TimeoutError:
+                await interaction.followup.send("You took too long to respond. Please try again.")
+        
+        # Set the callback for task selection
+        task_select.callback = task_select_callback
+
+        # Send the message to prompt task selection
+        await interaction.response.send_message("Please select the task you want to edit:", view=view)

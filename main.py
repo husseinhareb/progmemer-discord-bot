@@ -16,6 +16,7 @@ from src.notes import add_note
 from src.notes import get_note
 from src.notes import update_status
 from src.notes import remove_task
+from src.notes import edit_task
 load_dotenv()
 TOKEN = os.getenv('TOKEN')
 
@@ -60,7 +61,7 @@ add_note(bot)
 get_note(bot)
 update_status(bot)
 remove_task(bot)
-
+edit_task(bot)
 async def main():
     async with bot:
         await bot.add_cog(HelpCog(bot))  
