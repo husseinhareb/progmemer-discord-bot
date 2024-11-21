@@ -28,6 +28,14 @@ The bot is still under development, more commands will be addded..
 /clear - Stops the music and clears the queue.
 /stop - Kicks the bot from the voice channel.
 ```
+### To-Do Tasks
+```
+/add - Add a task for today. The task will be assigned a default status of 'to-do'.
+/list - List tasks for a specific date or today's tasks if no date is provided.
+/update - Update the status of a task. Options include 'to-do', 'working on it', and 'completed'.
+/remove - Remove a to-do task for today.
+/edit - Edit a task description for today.
+```
 
 ## Getting Started
 ### Running the bot
