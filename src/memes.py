@@ -20,6 +20,7 @@ reddit = praw.Reddit(client_id=REDDIT_CLIENT_ID,
                      user_agent=REDDIT_USER_AGENT)
 
 sent_posts = set()
+MAX_SENT_POSTS = 1000  # Limit the size of sent_posts to prevent memory issues
 
 def fetch_top_posts(subreddit_name):
     subreddit = reddit.subreddit(subreddit_name)
@@ -73,6 +74,13 @@ def register_memes(bot: commands.Bot):
             await interaction.response.send_message(embed=embed)
 
             sent_posts.add(post_info['id'])
+            
+            # Clear oldest entries if the set grows too large
+            if len(sent_posts) > MAX_SENT_POSTS:
+                # Remove oldest 20% of entries
+                remove_count = MAX_SENT_POSTS // 5
+                for _ in range(remove_count):
+                    sent_posts.pop()
 
         except discord.errors.NotFound as e:
             print(f"Failed to respond to interaction: {e}")

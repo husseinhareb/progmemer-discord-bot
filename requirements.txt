@@ -7,3 +7,4 @@ PyNaCl
 beautifulsoup4
 python-dotenv
 audioop-lts
+youtube-search-python

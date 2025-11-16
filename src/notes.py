@@ -87,12 +87,13 @@ def get_tasks_by_user(user_id, task_date):
     return [(task[0], task[1]) for task in tasks]
 
 # Update the status of a specific task
-def update_task_status(task, new_status):
+def update_task_status(task, new_status, user_id, task_date):
     conn = connect_to_db()
     c = conn.cursor()
 
     # Check if the task exists in the database before updating
-    c.execute("SELECT id FROM tasks WHERE task = ? AND status != ?", (task, new_status))
+    c.execute("SELECT id FROM tasks WHERE task = ? AND user_id = ? AND date = ? AND status != ?", 
+              (task, user_id, task_date, new_status))
     task_record = c.fetchone()
 
     if task_record is None:
@@ -100,8 +101,9 @@ def update_task_status(task, new_status):
         conn.close()
         return
 
-    # Get the task ID based on the task name (this is the way we can update it)
-    c.execute("SELECT id FROM tasks WHERE task = ?", (task,))
+    # Get the task ID based on the task name, user_id, and date
+    c.execute("SELECT id FROM tasks WHERE task = ? AND user_id = ? AND date = ?", 
+              (task, user_id, task_date))
     task_id = c.fetchone()[0]
 
     # Update task status
@@ -183,8 +185,8 @@ async def update_task_status_command(interaction: discord.Interaction, task_inde
     # Get the selected task
     task, _ = tasks[task_index]  # Get the selected task
 
-    # Update the task status in the database
-    update_task_status(task, status)  # Make sure this function updates the task correctly
+    # Update the task status in the database with user_id and date
+    update_task_status(task, status, user_id, today)
 
     # Fetch the updated task list
     tasks = get_tasks_by_user(user_id, today)  # Re-fetch tasks to reflect updated status
