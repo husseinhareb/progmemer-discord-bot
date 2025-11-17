@@ -195,8 +195,8 @@ async def update_task_status_command(interaction: discord.Interaction, task_inde
     await interaction.response.send_message(f"Task '{task}' status updated to '{status}'. Here are your updated tasks:")
     
     # Format the updated tasks list
-    tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(status, '❓')} {task}" 
-                             for index, (task, status) in enumerate(tasks))
+    tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
+                             for index, (task_name, task_status) in enumerate(tasks))
     
     # Send the updated tasks list
     await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")

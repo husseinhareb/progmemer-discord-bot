@@ -10,16 +10,21 @@ class HelpCog(commands.Cog):
 
     def set_message(self):
         self.help_message = f"""
-General commands:
-{self.bot.command_prefix}q - displays the current music queue
-{self.bot.command_prefix}p <keywords> - finds the song on YouTube and plays it in your current channel. Will resume playing the current song if it was paused
-{self.bot.command_prefix}skip - skips the current song being played
-{self.bot.command_prefix}clear - stops the music and clears the queue
-{self.bot.command_prefix}stop - disconnects the bot from the voice channel
-{self.bot.command_prefix}pause - pauses the current song being played or resumes if already paused
-{self.bot.command_prefix}resume - resumes playing the current song
-{self.bot.command_prefix}prefix - changes the command prefix
-{self.bot.command_prefix}remove - removes the last song from the queue
+**Music Commands:**
+{self.bot.command_prefix}play <song> - plays a song from YouTube
+{self.bot.command_prefix}pause - pauses the current song
+{self.bot.command_prefix}resume - resumes the paused song
+{self.bot.command_prefix}skip - skips the current song
+{self.bot.command_prefix}stop - stops playing and clears the queue
+{self.bot.command_prefix}queue - displays the current song queue
+{self.bot.command_prefix}lyrics - shows lyrics for the current song
+
+**Bot Commands:**
+{self.bot.command_prefix}prefix <new_prefix> - changes the command prefix
+{self.bot.command_prefix}helppp - displays this help message
+
+**Slash Commands:**
+Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll, /add, /list, /update, /remove, /edit
 """
 
     @commands.Cog.listener()

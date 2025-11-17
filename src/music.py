@@ -236,7 +236,7 @@ class MusicCog(commands.Cog):
                     logger.debug("_play: Already playing, just adding to queue.")
                     await self.send_embed(
                         ctx_or_interaction, 
-                        f"**#{len(self.music_queue) + 1} - '{song['title']}'** (Duration: {song['duration']}) added to the queue", 
+                        f"**#{len(self.music_queue)} - '{song['title']}'** (Duration: {song['duration']}) added to the queue", 
                         color=discord.Color.green(), 
                         thumbnail=song['thumbnail'], 
                         view=view
@@ -264,7 +264,7 @@ class MusicCog(commands.Cog):
 
     async def _pause(self, ctx_or_interaction):
         logger.debug("_pause: Attempting to pause.")
-        if self.is_playing:
+        if self.is_playing and self.vc is not None:
             self.is_playing = False
             self.is_paused = True
             self.vc.pause()
@@ -285,7 +285,7 @@ class MusicCog(commands.Cog):
 
     async def _resume(self, ctx_or_interaction):
         logger.debug("_resume: Attempting to resume.")
-        if self.is_paused:
+        if self.is_paused and self.vc is not None:
             self.is_paused = False
             self.is_playing = True
             self.vc.resume()
