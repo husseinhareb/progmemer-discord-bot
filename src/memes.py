@@ -16,16 +16,28 @@ REDDIT_CLIENT_SECRET = os.getenv('REDDIT_CLIENT_SECRET')
 USER_AGENT = os.getenv('USER_AGENT')
 REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT})'
 
-reddit = praw.Reddit(client_id=REDDIT_CLIENT_ID,
-                     client_secret=REDDIT_CLIENT_SECRET,
-                     user_agent=REDDIT_USER_AGENT)
+# Initialize Reddit with proper configuration for NSFW access
+reddit = praw.Reddit(
+    client_id=REDDIT_CLIENT_ID,
+    client_secret=REDDIT_CLIENT_SECRET,
+    user_agent=REDDIT_USER_AGENT,
+    check_for_async=False
+)
+
+# Enable NSFW content access - read_only mode still allows accessing public NSFW content
+reddit.read_only = True
 
 sent_posts = deque(maxlen=1000)  # Use deque with max length for automatic cleanup
 
 def fetch_top_posts(subreddit_name):
-    subreddit = reddit.subreddit(subreddit_name)
-    top_posts = list(subreddit.top(time_filter='month', limit=100))
-    return top_posts
+    try:
+        subreddit = reddit.subreddit(subreddit_name)
+        top_posts = list(subreddit.top(time_filter='month', limit=100))
+        top_posts = [post for post in top_posts if not post.stickied]
+        return top_posts
+    except Exception as e:
+        print(f"Error fetching posts from r/{subreddit_name}: {e}")
+        return []
 
 def get_unique_random_post_info(posts):
     unsent_posts = [post for post in posts if post.id not in sent_posts]
@@ -35,11 +47,27 @@ def get_unique_random_post_info(posts):
     
     # Determine image URL - handle various Reddit image formats
     image_url = None
-    if random_post.url.endswith(('jpg', 'jpeg', 'png', 'gif')):
-        image_url = random_post.url
-    elif hasattr(random_post, 'preview') and 'images' in random_post.preview:
-        # Get the highest quality preview image
-        image_url = random_post.preview['images'][0]['source']['url'].replace('&amp;', '&')
+    try:
+        # Direct image links
+        if random_post.url.endswith(('jpg', 'jpeg', 'png', 'gif')):
+            image_url = random_post.url
+        # i.redd.it images
+        elif 'i.redd.it' in random_post.url:
+            image_url = random_post.url
+        # Preview images (for NSFW and other content)
+        elif hasattr(random_post, 'preview'):
+            if 'images' in random_post.preview and len(random_post.preview['images']) > 0:
+                # Get the highest quality preview image
+                source = random_post.preview['images'][0]['source']
+                image_url = source['url'].replace('&amp;', '&')
+        # v.redd.it or other Reddit-hosted content
+        elif hasattr(random_post, 'media') and random_post.media:
+            if 'reddit_video' in random_post.media:
+                # For videos, use the thumbnail
+                if hasattr(random_post, 'thumbnail') and random_post.thumbnail.startswith('http'):
+                    image_url = random_post.thumbnail
+    except Exception as e:
+        print(f"Error extracting image URL: {e}")
     
     post_info = {
         "id": random_post.id,
