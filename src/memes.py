@@ -14,22 +14,31 @@ load_dotenv()
 REDDIT_CLIENT_ID = os.getenv('REDDIT_CLIENT_ID')
 REDDIT_CLIENT_SECRET = os.getenv('REDDIT_CLIENT_SECRET')
 USER_AGENT = os.getenv('USER_AGENT')
-REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT})'
 
-# Initialize Reddit with proper configuration for NSFW access
-reddit = praw.Reddit(
-    client_id=REDDIT_CLIENT_ID,
-    client_secret=REDDIT_CLIENT_SECRET,
-    user_agent=REDDIT_USER_AGENT,
-    check_for_async=False
-)
+# Validate Reddit API credentials
+if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
+    print("Warning: Reddit API credentials not configured. /meme command will not work.")
+    reddit = None
+else:
+    REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT})'
 
-# Enable NSFW content access - read_only mode still allows accessing public NSFW content
-reddit.read_only = True
+    # Initialize Reddit with proper configuration for NSFW access
+    reddit = praw.Reddit(
+        client_id=REDDIT_CLIENT_ID,
+        client_secret=REDDIT_CLIENT_SECRET,
+        user_agent=REDDIT_USER_AGENT,
+        check_for_async=False
+    )
+
+    # Enable NSFW content access - read_only mode still allows accessing public NSFW content
+    reddit.read_only = True
 
 sent_posts = deque(maxlen=1000)  # Use deque with max length for automatic cleanup
 
 def fetch_top_posts(subreddit_name):
+    if reddit is None:
+        print("Reddit API not configured")
+        return []
     try:
         subreddit = reddit.subreddit(subreddit_name)
         top_posts = list(subreddit.top(time_filter='month', limit=100))

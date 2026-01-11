@@ -7,22 +7,32 @@ class HelpCog(commands.Cog):
         self.bot = bot
         self.help_message = ""
         self.text_channel_list = []
+        self.guild_prefixes = {}  # Per-guild prefix storage
+        self.default_prefix = "!"
         self.set_message()
 
-    def set_message(self):
+    def get_prefix(self, guild_id=None):
+        """Get the prefix for a specific guild, or default."""
+        if guild_id and guild_id in self.guild_prefixes:
+            return self.guild_prefixes[guild_id]
+        return self.default_prefix
+
+    def set_message(self, prefix=None):
+        if prefix is None:
+            prefix = self.default_prefix
         self.help_message = f"""
 **Music Commands:**
-{self.bot.command_prefix}play <song> - plays a song from YouTube
-{self.bot.command_prefix}pause - pauses the current song
-{self.bot.command_prefix}resume - resumes the paused song
-{self.bot.command_prefix}skip - skips the current song
-{self.bot.command_prefix}stop - stops playing and clears the queue
-{self.bot.command_prefix}queue - displays the current song queue
-{self.bot.command_prefix}lyrics - shows lyrics for the current song
+{prefix}play <song> - plays a song from YouTube
+{prefix}pause - pauses the current song
+{prefix}resume - resumes the paused song
+{prefix}skip - skips the current song
+{prefix}stop - stops playing and clears the queue
+{prefix}queue - displays the current song queue
+{prefix}lyrics - shows lyrics for the current song
 
 **Bot Commands:**
-{self.bot.command_prefix}prefix <new_prefix> - changes the command prefix
-{self.bot.command_prefix}helppp - displays this help message
+{prefix}prefix <new_prefix> - changes the command prefix for this server
+{prefix}helppp - displays this help message
 
 **Slash Commands:**
 Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll, /add, /list, /update, /remove, /edit
@@ -37,13 +47,16 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             if channel.permissions_for(guild.me).send_messages
         ]
         # Use correct command name in presence
-        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}helppp"))
+        await self.bot.change_presence(activity=discord.Game(f"type {self.default_prefix}helppp"))
 
     @commands.command(name="helppp", help="Displays all the available commands")
     async def helppp(self, ctx):
+        # Generate help message with the current guild's prefix
+        prefix = self.get_prefix(ctx.guild.id if ctx.guild else None)
+        self.set_message(prefix)
         await ctx.send(self.help_message)
 
-    @commands.command(name="prefix", help="Change bot prefix")
+    @commands.command(name="prefix", help="Change bot prefix for this server")
     async def prefix(self, ctx, *args):
         # Validate that a prefix was provided
         if not args:
@@ -56,13 +69,18 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
         if not new_prefix.strip():
             await ctx.send("Prefix cannot be empty or whitespace only.")
             return
-            
-        self.bot.command_prefix = new_prefix
-        self.set_message()
-        await ctx.send(f"prefix set to **'{self.bot.command_prefix}'**")
-        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}helppp"))
+        
+        # Store per-guild prefix
+        if ctx.guild:
+            self.guild_prefixes[ctx.guild.id] = new_prefix
+            await ctx.send(f"Prefix for this server set to **'{new_prefix}'**")
+        else:
+            # DM context - change default prefix
+            self.default_prefix = new_prefix
+            await ctx.send(f"Default prefix set to **'{new_prefix}'**")
 
-    @commands.command(name="send_to_all", help="Send a message to all text channels")
+    @commands.has_permissions(administrator=True)
+    @commands.command(name="send_to_all", help="Send a message to all text channels (Admin only)")
     async def send_to_all(self, ctx, *, msg):
         # Refresh channel list before sending
         self.text_channel_list = [
@@ -87,6 +105,11 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
         
         await ctx.send(f"Message sent to {sent_count} channels.")
 
+    @send_to_all.error
+    async def send_to_all_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ You need administrator permissions to use this command.")
 
-def setup(bot):
-    bot.add_cog(HelpCog(bot))
+
+async def setup(bot):
+    await bot.add_cog(HelpCog(bot))

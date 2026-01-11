@@ -5,7 +5,7 @@ from discord import app_commands
 
 
 def get_jokes(bot: commands.Bot):
-    @bot.tree.command(name="joke", description="Get a random joke default: Programming")
+    @bot.tree.command(name="joke", description="Get a random joke (default: Any)")
     @app_commands.describe(category="Choose a joke category (optional)")
     @app_commands.choices(category=[
         app_commands.Choice(name="Programming", value="Programming"),
@@ -23,7 +23,7 @@ def get_jokes(bot: commands.Bot):
                         joke_message = joke['joke']
                     else:
                         joke_message = f"{joke['setup']} - **{joke['delivery']}**"
-        except aiohttp.ClientError:
+        except (aiohttp.ClientError, aiohttp.ClientResponseError):
             joke_message = "Failed to retrieve joke. Please try again later."
 
         await interaction.response.send_message(joke_message)

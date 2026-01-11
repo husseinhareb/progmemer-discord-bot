@@ -20,7 +20,7 @@ def extract_artist_and_song(title):
         r'^(.*?)\s*-\s*(.*?)$',  # "Artist - Song"
         r'^(.*?)\s*–\s*(.*?)$',  # "Artist – Song" (different dash)
         r'^(.*?)\s*:\s*(.*?)$',  # "Artist : Song"
-        r'\"(.*?)\"\s*by\s*(.*?)$',  # '"Song" by Artist'
+        r'\"(.*?)\"\s*by\s*(.*?)$',  # '"Song" by Artist' -> swap: artist=group2, song=group1
         r'^(.*?)\s*\"(.*?)\"$',  # 'Artist "Song"'
         r'^(.*?)\s*\((.*?)\)$',  # "Artist (Song)"
     ]
@@ -43,9 +43,14 @@ def extract_artist_and_song(title):
     for pattern in patterns:
         match = re.match(pattern, clean_title)
         if match:
-            artist, song = match.groups()
-            logger.debug(f"extract_artist_and_song: Matched pattern '{pattern}', artist={artist.strip()}, song={song.strip()}")
-            return artist.strip(), song.strip()
+            first, second = match.groups()
+            # Handle special case: '"Song" by Artist' pattern returns (song, artist)
+            # Need to swap them - detect by checking if 'by' is in the pattern
+            if 'by' in pattern:
+                logger.debug(f"extract_artist_and_song: 'by' pattern matched, swapping: artist={second.strip()}, song={first.strip()}")
+                return second.strip(), first.strip()
+            logger.debug(f"extract_artist_and_song: Matched pattern '{pattern}', artist={first.strip()}, song={second.strip()}")
+            return first.strip(), second.strip()
 
     logger.debug("extract_artist_and_song: No pattern matched, returning None, None")
     return None, None
@@ -78,6 +83,16 @@ class MusicCog(commands.Cog):
         if guild_id not in self.guild_states:
             self.guild_states[guild_id] = GuildMusicState()
         return self.guild_states[guild_id]
+
+    @commands.Cog.listener()
+    async def on_guild_remove(self, guild):
+        """Clean up guild state when bot leaves a server."""
+        if guild.id in self.guild_states:
+            state = self.guild_states[guild.id]
+            if state.vc and state.vc.is_connected():
+                await state.vc.disconnect()
+            del self.guild_states[guild.id]
+            logger.info(f"Cleaned up music state for guild {guild.id}")
 
     async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple(), thumbnail=None, view=None):
         logger.debug(f"send_embed: Sending Embed -> Title: {title}, Description: {description[:60]}...")

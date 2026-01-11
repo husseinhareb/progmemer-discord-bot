@@ -7,6 +7,8 @@ from discord import app_commands
 
 async def fetch_weather(city):
     api_key = os.getenv('WEATHER_API')
+    if not api_key:
+        return None, None, None
     url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
     try:
         async with aiohttp.ClientSession() as session:
