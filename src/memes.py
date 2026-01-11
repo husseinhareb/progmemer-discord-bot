@@ -75,7 +75,7 @@ def get_unique_random_post_info(posts):
         "score": random_post.score,
         "url": random_post.url,
         "subreddit": random_post.subreddit.display_name,
-        "author": str(random_post.author),
+        "author": str(random_post.author) if random_post.author else "[deleted]",
         "created_utc": random_post.created_utc,
         "image_url": image_url,
         "nsfw": random_post.over_18
@@ -102,7 +102,7 @@ def register_memes(bot: commands.Bot):
     @bot.tree.command(name="meme", description="Get a random post from any subreddit (default: r/ProgrammerHumor)")
     @app_commands.describe(subreddit="Type any subreddit name (e.g., 'funny', 'memes', 'aww')")
     @app_commands.autocomplete(subreddit=subreddit_autocomplete)
-    async def meme(interaction: discord.Interaction, subreddit: str = "ProgrammerHumor"):
+    async def meme(interaction: discord.Interaction, subreddit: str = POPULAR_SUBREDDITS[0]):
         # Clean the subreddit name (remove r/ prefix if present)
         subreddit = subreddit.strip().replace('r/', '')
         

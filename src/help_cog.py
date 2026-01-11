@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 
+
 class HelpCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -29,7 +30,14 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
 
     @commands.Cog.listener()
     async def on_ready(self):
-        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}help"))
+        # Populate text_channel_list with all text channels the bot has access to
+        self.text_channel_list = [
+            channel for guild in self.bot.guilds 
+            for channel in guild.text_channels 
+            if channel.permissions_for(guild.me).send_messages
+        ]
+        # Use correct command name in presence
+        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}helppp"))
 
     @commands.command(name="helppp", help="Displays all the available commands")
     async def helppp(self, ctx):
@@ -37,15 +45,48 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
 
     @commands.command(name="prefix", help="Change bot prefix")
     async def prefix(self, ctx, *args):
-        self.bot.command_prefix = " ".join(args)
+        # Validate that a prefix was provided
+        if not args:
+            await ctx.send("Please provide a new prefix. Usage: `!prefix <new_prefix>`")
+            return
+        
+        new_prefix = " ".join(args)
+        
+        # Prevent empty or whitespace-only prefix
+        if not new_prefix.strip():
+            await ctx.send("Prefix cannot be empty or whitespace only.")
+            return
+            
+        self.bot.command_prefix = new_prefix
         self.set_message()
         await ctx.send(f"prefix set to **'{self.bot.command_prefix}'**")
-        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}help"))
+        await self.bot.change_presence(activity=discord.Game(f"type {self.bot.command_prefix}helppp"))
 
-    @commands.command(name="send_to_all", help="Send a message to all members")
+    @commands.command(name="send_to_all", help="Send a message to all text channels")
     async def send_to_all(self, ctx, *, msg):
+        # Refresh channel list before sending
+        self.text_channel_list = [
+            channel for guild in self.bot.guilds 
+            for channel in guild.text_channels 
+            if channel.permissions_for(guild.me).send_messages
+        ]
+        
+        if not self.text_channel_list:
+            await ctx.send("No text channels available to send messages to.")
+            return
+            
+        sent_count = 0
         for text_channel in self.text_channel_list:
-            await text_channel.send(msg)
+            try:
+                await text_channel.send(msg)
+                sent_count += 1
+            except discord.Forbidden:
+                pass  # Skip channels where we lost permission
+            except Exception as e:
+                print(f"Error sending to {text_channel}: {e}")
+        
+        await ctx.send(f"Message sent to {sent_count} channels.")
+
 
 def setup(bot):
     bot.add_cog(HelpCog(bot))

@@ -4,9 +4,9 @@ import discord
 import asyncio
 from discord.ext import commands
 from discord import app_commands
-from dotenv import load_dotenv
-from datetime import date, timedelta
+from datetime import date
 from discord.ui import Select, View
+from pathlib import Path
 
 
 # Global dictionary for status emojis
@@ -16,131 +16,117 @@ status_emojis = {
     "completed": "✅"  # Green checkmark
 }
 
-# Database connection and table creation
+# Get absolute path for database
+SCRIPT_DIR = Path(__file__).parent.parent.absolute()
+DB_FOLDER = SCRIPT_DIR / 'db'
+DB_FILE = DB_FOLDER / 'tasks.db'
+
+
 def connect_to_db():
-    db_folder = 'db'
-    db_file = os.path.join(db_folder, 'tasks.db')
+    """Create database connection with absolute path."""
+    if not DB_FOLDER.exists():
+        DB_FOLDER.mkdir(parents=True)
+        print(f"Created folder: {DB_FOLDER}")
 
-    if not os.path.exists(db_folder):
-        os.makedirs(db_folder)
-        print(f"Created folder: {db_folder}")
-
-    if not os.path.exists(db_file):
-        conn = sqlite3.connect(db_file)
-        c = conn.cursor()
-        c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        task TEXT NOT NULL,
-                        user_id INTEGER NOT NULL,
-                        date TEXT NOT NULL,
-                        status TEXT DEFAULT 'to-do'
-                    )''')
-        c.execute('''CREATE TABLE IF NOT EXISTS users (
-                        id INTEGER PRIMARY KEY,
-                        username TEXT NOT NULL
-                    )''')
-        conn.commit()
-        conn.close()
-        print(f"Created database file: {db_file} and tables.")
+    if not DB_FILE.exists():
+        conn = sqlite3.connect(str(DB_FILE))
+        with conn:
+            c = conn.cursor()
+            c.execute('''CREATE TABLE IF NOT EXISTS tasks (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            task TEXT NOT NULL,
+                            user_id INTEGER NOT NULL,
+                            date TEXT NOT NULL,
+                            status TEXT DEFAULT 'to-do'
+                        )''')
+            c.execute('''CREATE TABLE IF NOT EXISTS users (
+                            id INTEGER PRIMARY KEY,
+                            username TEXT NOT NULL
+                        )''')
+        print(f"Created database file: {DB_FILE} and tables.")
+        return conn
     else:
-        conn = sqlite3.connect(db_file)
-        print(f"Connected to database: {db_file}")
-    
-    return conn
+        conn = sqlite3.connect(str(DB_FILE))
+        print(f"Connected to database: {DB_FILE}")
+        return conn
 
-# Add a task for a specific user, date, and default status
+
 def add_task_to_db(task, user_id, task_date, status='to-do'):
-    conn = connect_to_db()
-    c = conn.cursor()
-    # Add task to tasks table with default status
-    c.execute("INSERT INTO tasks (task, user_id, date, status) VALUES (?, ?, ?, ?)", (task, user_id, task_date, status))
-    conn.commit()
-    conn.close()
+    """Add a task for a specific user, date, and default status."""
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute("INSERT INTO tasks (task, user_id, date, status) VALUES (?, ?, ?, ?)", 
+                  (task, user_id, task_date, status))
     print(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date}")
 
-# Ensure user exists in database
+
 def add_user_to_db(user_id, username):
-    conn = connect_to_db()
-    c = conn.cursor()
+    """Ensure user exists in database."""
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        user = c.fetchone()
 
-    # Check if the user already exists
-    c.execute("SELECT id FROM users WHERE id = ?", (user_id,))
-    user = c.fetchone()
+        if user is None:
+            c.execute("INSERT INTO users (id, username) VALUES (?, ?)", (user_id, username))
+            print(f"Added user {username} with ID {user_id}")
 
-    if user is None:
-        # If user does not exist, add them to the users table
-        c.execute("INSERT INTO users (id, username) VALUES (?, ?)", (user_id, username))
-        print(f"Added user {username} with ID {user_id}")
-    
-    conn.commit()
-    conn.close()
 
-# Retrieve tasks by user and date with status
 def get_tasks_by_user(user_id, task_date):
-    conn = connect_to_db()
-    c = conn.cursor()
-    # Fetch tasks for the given user_id and date
-    c.execute("SELECT task, status FROM tasks WHERE user_id = ? AND date = ?", (user_id, task_date))
-    tasks = c.fetchall()
-    conn.close()
-    # Return tasks as a list of tuples (task, status)
+    """Retrieve tasks by user and date with status."""
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute("SELECT task, status FROM tasks WHERE user_id = ? AND date = ?", (user_id, task_date))
+        tasks = c.fetchall()
     return [(task[0], task[1]) for task in tasks]
 
-# Update the status of a specific task
+
 def update_task_status(task, new_status, user_id, task_date):
-    conn = connect_to_db()
-    c = conn.cursor()
+    """Update the status of a specific task."""
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
 
-    # Check if the task exists in the database before updating
-    c.execute("SELECT id FROM tasks WHERE task = ? AND user_id = ? AND date = ? AND status != ?", 
-              (task, user_id, task_date, new_status))
-    task_record = c.fetchone()
 
-    if task_record is None:
-        print(f"Task '{task}' either does not exist or is already set to '{new_status}'.")
-        conn.close()
-        return
+        # Single query to check if task exists and is not already at the target status
+        c.execute("""SELECT id FROM tasks 
+                     WHERE task = ? AND user_id = ? AND date = ? AND status != ?""", 
+                  (task, user_id, task_date, new_status))
+        task_record = c.fetchone()
 
-    # Get the task ID based on the task name, user_id, and date
-    c.execute("SELECT id FROM tasks WHERE task = ? AND user_id = ? AND date = ?", 
-              (task, user_id, task_date))
-    task_id = c.fetchone()[0]
+        if task_record is None:
+            print(f"Task '{task}' either does not exist or is already set to '{new_status}'.")
+            return
 
-    # Update task status
-    c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
-    conn.commit()
+        # Use the ID we already have from the first query
+        task_id = task_record[0]
 
-    # Check if the task was updated successfully
-    c.execute("SELECT status FROM tasks WHERE id = ?", (task_id,))
-    updated_status = c.fetchone()[0]
-
-    if updated_status == new_status:
+        # Update task status
+        c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
         print(f"Task '{task}' successfully updated to status '{new_status}'.")
-    else:
-        print(f"Failed to update task '{task}' to status '{new_status}'.")
 
-    conn.close()
 
 def add_note(bot: commands.Bot):
     @bot.tree.command(name="add", description="Add a task")
     async def add_note_(interaction: discord.Interaction, task: str):
-        await interaction.response.defer()  # Defers to prevent timeout
+        await interaction.response.defer()
         user = interaction.user
         user_id = user.id
         username = user.name
         today = date.today().isoformat()
 
+        # Ensure database exists
+        connect_to_db()
+        
         add_user_to_db(user_id, username)
         add_task_to_db(task, user_id, today)
 
         await interaction.followup.send(f"Task '{task}' has been added for {username} with status 'to-do'.")
 
 
-# Command to list tasks with separate day, month, and year parameters
 def get_note(bot: commands.Bot):
     @bot.tree.command(name="list", description="List tasks for a specific date or today's tasks if no date is provided")
     async def get_note_(interaction: discord.Interaction, day: int = None, month: int = None, year: int = None):
-        await interaction.response.defer()  # Prevent timeout
+        await interaction.response.defer()
 
         # Get today's date and use it as a default if parameters are not provided
         today = date.today()
@@ -155,6 +141,9 @@ def get_note(bot: commands.Bot):
             await interaction.followup.send("Invalid date provided. Please check the day, month, and year.")
             return
 
+        # Ensure database exists
+        connect_to_db()
+        
         user_id = interaction.user.id
         tasks = get_tasks_by_user(user_id, task_date)
 
@@ -165,40 +154,36 @@ def get_note(bot: commands.Bot):
         else:
             await interaction.followup.send(f"You have no tasks for {task_date}.")
 
-# Command to update the status of a task
+
 async def update_task_status_command(interaction: discord.Interaction, task_index: int, status: str):
+    """Command to update the status of a task."""
     user_id = interaction.user.id
     today = date.today().isoformat()
 
-    # Get the user's tasks
+    # Ensure database exists
+    connect_to_db()
+    
     tasks = get_tasks_by_user(user_id, today)
 
     if not tasks:
         await interaction.response.send_message("You have no tasks for today.")
         return
 
-    # Validate task selection
     if task_index < 0 or task_index >= len(tasks):
         await interaction.response.send_message("Invalid task selection.")
         return
 
-    # Get the selected task
-    task, _ = tasks[task_index]  # Get the selected task
-
-    # Update the task status in the database with user_id and date
+    task, _ = tasks[task_index]
     update_task_status(task, status, user_id, today)
 
-    # Fetch the updated task list
-    tasks = get_tasks_by_user(user_id, today)  # Re-fetch tasks to reflect updated status
+    # Re-fetch tasks to reflect updated status
+    tasks = get_tasks_by_user(user_id, today)
     
-    # Confirm status update
     await interaction.response.send_message(f"Task '{task}' status updated to '{status}'. Here are your updated tasks:")
     
-    # Format the updated tasks list
     tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
                              for index, (task_name, task_status) in enumerate(tasks))
     
-    # Send the updated tasks list
     await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
 
 
@@ -207,7 +192,6 @@ class StatusSelect(Select):
         self.tasks = tasks
         self.task_index = task_index
         
-        # Create status options for the dropdown
         options = [
             discord.SelectOption(label="To-Do", value="to-do", emoji="⬜"),
             discord.SelectOption(label="Working on it", value="working on it", emoji="🔄"),
@@ -217,107 +201,94 @@ class StatusSelect(Select):
         super().__init__(placeholder="Select task status", options=options)
 
     async def callback(self, interaction: discord.Interaction):
-        # Get the selected status
         status = self.values[0]
         await update_task_status_command(interaction, self.task_index, status)
 
-# Command to update the status of a task
+
 def update_status(bot: commands.Bot):
     @bot.tree.command(name="update", description="Update the status of a task")
     async def update_status_(interaction: discord.Interaction):
         user_id = interaction.user.id
         today = date.today().isoformat()
 
-        # Get the user's tasks for today
+        # Ensure database exists
+        connect_to_db()
+        
         tasks = get_tasks_by_user(user_id, today)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        # Create dropdown options with task names and numbers
         task_options = [
             discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
             for index, (task, status) in enumerate(tasks)
         ]
         
-        # Create a select dropdown for task selection
         task_select = Select(placeholder="Select a task to update", options=task_options)
-        view = View()
+        view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        # Once a task is selected, show the status update dropdown
         async def task_select_callback(interaction: discord.Interaction):
             selected_task_index = int(task_select.values[0])
-            # Create and send the status dropdown
             status_select = StatusSelect(tasks=tasks, task_index=selected_task_index)
-            status_view = View()
+            status_view = View(timeout=120)  # 2 minute timeout
             status_view.add_item(status_select)
             await interaction.response.send_message(f"Please select the new status for '{tasks[selected_task_index][0]}'.", view=status_view)
         
-        # Set the callback to handle task selection
         task_select.callback = task_select_callback
-
-        # Send the message asking to select a task
         await interaction.response.send_message("Please select the task you want to update:", view=view)
 
 
-# Function to remove a task by index
 def remove_task_from_db(user_id, task_index, task_date):
-    conn = connect_to_db()
-    c = conn.cursor()
+    """Function to remove a task by index."""
+    # Ensure database exists
+    connect_to_db()
     
-    # Fetch tasks for the user and date to confirm the task index
     tasks = get_tasks_by_user(user_id, task_date)
     
     if not tasks:
-        conn.close()
-        return None  # No tasks to remove
+        return None
     
     if task_index < 0 or task_index >= len(tasks):
-        conn.close()
         return "Invalid task selection."
     
-    # Get the task name by index
     task_name, _ = tasks[task_index]
     
-    # Delete the task from the database
-    c.execute("DELETE FROM tasks WHERE user_id = ? AND task = ? AND date = ?", (user_id, task_name, task_date))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute("DELETE FROM tasks WHERE user_id = ? AND task = ? AND date = ?", 
+                  (user_id, task_name, task_date))
     
     return f"Task '{task_name}' has been removed."
 
-# Command to remove a to-do task
+
 def remove_task(bot: commands.Bot):
     @bot.tree.command(name="remove", description="Remove a to-do task for today")
     async def remove_task_(interaction: discord.Interaction):
         user_id = interaction.user.id
         today = date.today().isoformat()
         
-        # Fetch tasks for today
+        # Ensure database exists
+        connect_to_db()
+        
         tasks = get_tasks_by_user(user_id, today)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        # Create dropdown options with task names and numbers
         task_options = [
             discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
             for index, (task, status) in enumerate(tasks)
         ]
         
-        # Create a select dropdown for task selection
         task_select = Select(placeholder="Select a task to remove", options=task_options)
-        view = View()
+        view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        # Callback to handle task selection and removal
         async def task_select_callback(interaction: discord.Interaction):
             selected_task_index = int(task_select.values[0])
-            
-            # Remove the selected task from the database
             result = remove_task_from_db(user_id, selected_task_index, today)
             
             if result is None:
@@ -327,38 +298,32 @@ def remove_task(bot: commands.Bot):
             else:
                 await interaction.response.send_message(result)
         
-        # Set the callback for task selection
         task_select.callback = task_select_callback
-
-        # Send the message to prompt task selection
         await interaction.response.send_message("Please select the task you want to remove:", view=view)
 
 
 def edit_task_from_db(user_id, task_index, task_date, new_task_description):
-    conn = connect_to_db()
-    c = conn.cursor()
-
-    # Fetch tasks for the user and date to confirm the task index
+    """Edit a task description."""
+    # Ensure database exists  
+    connect_to_db()
+    
     tasks = get_tasks_by_user(user_id, task_date)
     
     if not tasks:
-        conn.close()
-        return None  # No tasks to edit
+        return None
     
     if task_index < 0 or task_index >= len(tasks):
-        conn.close()
         return "Invalid task selection."
     
-    # Get the task name by index
     task_name, status = tasks[task_index]
     
-    # Update the task description
-    c.execute("UPDATE tasks SET task = ? WHERE user_id = ? AND task = ? AND date = ?", 
-              (new_task_description, user_id, task_name, task_date))
-    conn.commit()
-    conn.close()
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET task = ? WHERE user_id = ? AND task = ? AND date = ?", 
+                  (new_task_description, user_id, task_name, task_date))
     
     return f"Task '{task_name}' has been updated to '{new_task_description}'."
+
 
 def edit_task(bot: commands.Bot):
     @bot.tree.command(name="edit", description="Edit a task description")
@@ -366,40 +331,36 @@ def edit_task(bot: commands.Bot):
         user_id = interaction.user.id
         today = date.today().isoformat()
         
-        # Fetch tasks for today
+        # Ensure database exists
+        connect_to_db()
+        
         tasks = get_tasks_by_user(user_id, today)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        # Create dropdown options with task names and numbers
         task_options = [
             discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
             for index, (task, status) in enumerate(tasks)
         ]
         
-        # Create a select dropdown for task selection
         task_select = Select(placeholder="Select a task to edit", options=task_options)
-        view = View()
+        view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        # Callback to handle task selection and editing
         async def task_select_callback(interaction: discord.Interaction):
             selected_task_index = int(task_select.values[0])
             
-            # Ask the user for the new task description
             await interaction.response.send_message(f"Please enter the new description for the task:")
             
-            # Wait for the user to provide the new task description
             def check(m):
-                return m.author == interaction.user and isinstance(m.channel, discord.TextChannel)
+                return m.author.id == interaction.user.id and m.channel.id == interaction.channel_id
             
             try:
-                msg = await bot.wait_for('message', check=check, timeout=60)  # 60 seconds timeout
+                msg = await bot.wait_for('message', check=check, timeout=60)
                 new_task_description = msg.content
                 
-                # Update the task description in the database
                 result = edit_task_from_db(user_id, selected_task_index, today, new_task_description)
                 
                 await interaction.followup.send(result)
@@ -407,8 +368,5 @@ def edit_task(bot: commands.Bot):
             except asyncio.TimeoutError:
                 await interaction.followup.send("You took too long to respond. Please try again.")
         
-        # Set the callback for task selection
         task_select.callback = task_select_callback
-
-        # Send the message to prompt task selection
         await interaction.response.send_message("Please select the task you want to edit:", view=view)

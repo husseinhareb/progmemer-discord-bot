@@ -1,9 +1,8 @@
-import requests
+import aiohttp
 import discord
 from discord.ext import commands
 from discord import app_commands
 
-valid_categories = ["Programming", "Misc", "Dark", "Any"]
 
 def get_jokes(bot: commands.Bot):
     @bot.tree.command(name="joke", description="Get a random joke default: Programming")
@@ -16,14 +15,15 @@ def get_jokes(bot: commands.Bot):
     ])
     async def joke(interaction: discord.Interaction, category: str = "Any"):
         try:
-            response = requests.get(f'https://v2.jokeapi.dev/joke/{category}')
-            response.raise_for_status()
-            joke = response.json()
-            if joke['type'] == 'single':
-                joke_message = joke['joke']
-            else:
-                joke_message = f"{joke['setup']} - **{joke['delivery']}**"
-        except requests.RequestException:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f'https://v2.jokeapi.dev/joke/{category}') as response:
+                    response.raise_for_status()
+                    joke = await response.json()
+                    if joke['type'] == 'single':
+                        joke_message = joke['joke']
+                    else:
+                        joke_message = f"{joke['setup']} - **{joke['delivery']}**"
+        except aiohttp.ClientError:
             joke_message = "Failed to retrieve joke. Please try again later."
 
         await interaction.response.send_message(joke_message)
