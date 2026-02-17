@@ -20,7 +20,9 @@ if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
     print("Warning: Reddit API credentials not configured. /meme command will not work.")
     reddit = None
 else:
-    REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT})'
+    if not USER_AGENT:
+        print("Warning: USER_AGENT not configured. Using default user agent.")
+    REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT or "unknown"})'
 
     # Initialize Reddit with proper configuration for NSFW access
     reddit = praw.Reddit(

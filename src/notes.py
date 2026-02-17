@@ -28,21 +28,19 @@ def ensure_db_exists():
         DB_FOLDER.mkdir(parents=True)
         print(f"Created folder: {DB_FOLDER}")
 
-    if not DB_FILE.exists():
-        with sqlite3.connect(str(DB_FILE)) as conn:
-            c = conn.cursor()
-            c.execute('''CREATE TABLE IF NOT EXISTS tasks (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            task TEXT NOT NULL,
-                            user_id INTEGER NOT NULL,
-                            date TEXT NOT NULL,
-                            status TEXT DEFAULT 'to-do'
-                        )''')
-            c.execute('''CREATE TABLE IF NOT EXISTS users (
-                            id INTEGER PRIMARY KEY,
-                            username TEXT NOT NULL
-                        )''')
-        print(f"Created database file: {DB_FILE} and tables.")
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        task TEXT NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        status TEXT DEFAULT 'to-do'
+                    )''')
+        c.execute('''CREATE TABLE IF NOT EXISTS users (
+                        id INTEGER PRIMARY KEY,
+                        username TEXT NOT NULL
+                    )''')
 
 
 def add_task_to_db(task, user_id, task_date, status='to-do'):

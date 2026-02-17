@@ -19,11 +19,13 @@ def get_jokes(bot: commands.Bot):
                 async with session.get(f'https://v2.jokeapi.dev/joke/{category}') as response:
                     response.raise_for_status()
                     joke = await response.json()
-                    if joke['type'] == 'single':
+                    if joke.get('error'):
+                        joke_message = "Failed to retrieve joke. Please try again later."
+                    elif joke['type'] == 'single':
                         joke_message = joke['joke']
                     else:
                         joke_message = f"{joke['setup']} - **{joke['delivery']}**"
-        except (aiohttp.ClientError, aiohttp.ClientResponseError):
+        except (aiohttp.ClientError, aiohttp.ClientResponseError, KeyError):
             joke_message = "Failed to retrieve joke. Please try again later."
 
         await interaction.response.send_message(joke_message)

@@ -56,6 +56,7 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
         self.set_message(prefix)
         await ctx.send(self.help_message)
 
+    @commands.has_permissions(manage_guild=True)
     @commands.command(name="prefix", help="Change bot prefix for this server")
     async def prefix(self, ctx, *args):
         # Validate that a prefix was provided
@@ -79,14 +80,21 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             self.default_prefix = new_prefix
             await ctx.send(f"Default prefix set to **'{new_prefix}'**")
 
+    @prefix.error
+    async def prefix_error(self, ctx, error):
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ You need 'Manage Server' permission to change the prefix.")
+
     @commands.has_permissions(administrator=True)
-    @commands.command(name="send_to_all", help="Send a message to all text channels (Admin only)")
+    @commands.command(name="send_to_all", help="Send a message to all text channels in this server (Admin only)")
     async def send_to_all(self, ctx, *, msg):
-        # Refresh channel list before sending
+        if not ctx.guild:
+            await ctx.send("This command can only be used in a server.")
+            return
+        # Refresh channel list for the current guild only
         self.text_channel_list = [
-            channel for guild in self.bot.guilds 
-            for channel in guild.text_channels 
-            if channel.permissions_for(guild.me).send_messages
+            channel for channel in ctx.guild.text_channels 
+            if channel.permissions_for(ctx.guild.me).send_messages
         ]
         
         if not self.text_channel_list:

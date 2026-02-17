@@ -156,6 +156,13 @@ class MusicCog(commands.Cog):
                 return
             
             song = data['url']
+
+            if state.vc is None or not state.vc.is_connected():
+                logger.warning("play_next: Voice client disconnected, cannot play next song.")
+                state.is_playing = False
+                state.current_song = None
+                return
+
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(song, **self.FFMPEG_OPTIONS))
             logger.debug("play_next: Attempting to play the next song.")
             
@@ -258,6 +265,9 @@ class MusicCog(commands.Cog):
         else:
             author = ctx_or_interaction.user
             guild_id = ctx_or_interaction.guild_id
+            # Defer slash command response to avoid 3-second interaction timeout
+            if not ctx_or_interaction.response.is_done():
+                await ctx_or_interaction.response.defer()
 
         state = self.get_guild_state(guild_id)
 
@@ -269,40 +279,48 @@ class MusicCog(commands.Cog):
             await self.send_embed(ctx_or_interaction, "You need to connect to a voice channel first!", title="Error", color=discord.Color.red())
             return
 
+        loop = asyncio.get_running_loop()
+        song = await loop.run_in_executor(None, self.search_yt, query)
+        if song is None:
+            logger.warning("_play: search_yt returned None.")
+            await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format or unsupported type. Please try another keyword.", title="Error", color=discord.Color.red())
+            return
+
+        state.music_queue.append([song, voice_channel])
+        logger.info(f"_play: Added song '{song['title']}' to queue. Queue length is now {len(state.music_queue)}")
+
+        view = MusicControlView(self, guild_id)
         if state.is_paused:
-            logger.debug("_play: Bot is paused, resuming.")
+            logger.debug("_play: Bot is paused, resuming and queuing new song.")
             state.vc.resume()
             state.is_paused = False
             state.is_playing = True
+            await self.send_embed(
+                ctx_or_interaction,
+                f"Resumed playback and added **'{song['title']}'** (Duration: {song['duration']}) to the queue",
+                color=discord.Color.green(),
+                thumbnail=song['thumbnail'],
+                view=view
+            )
+        elif state.is_playing:
+            logger.debug("_play: Already playing, just adding to queue.")
+            await self.send_embed(
+                ctx_or_interaction, 
+                f"**#{len(state.music_queue)} - '{song['title']}'** (Duration: {song['duration']}) added to the queue", 
+                color=discord.Color.green(), 
+                thumbnail=song['thumbnail'], 
+                view=view
+            )
         else:
-            song = self.search_yt(query)
-            if song is None:
-                logger.warning("_play: search_yt returned None.")
-                await self.send_embed(ctx_or_interaction, "Could not download the song. Incorrect format or unsupported type. Please try another keyword.", title="Error", color=discord.Color.red())
-            else:
-                state.music_queue.append([song, voice_channel])
-                logger.info(f"_play: Added song '{song['title']}' to queue. Queue length is now {len(state.music_queue)}")
-
-                view = MusicControlView(self, guild_id)
-                if state.is_playing:
-                    logger.debug("_play: Already playing, just adding to queue.")
-                    await self.send_embed(
-                        ctx_or_interaction, 
-                        f"**#{len(state.music_queue)} - '{song['title']}'** (Duration: {song['duration']}) added to the queue", 
-                        color=discord.Color.green(), 
-                        thumbnail=song['thumbnail'], 
-                        view=view
-                    )
-                else:
-                    logger.debug("_play: Not playing, will start now.")
-                    await self.send_embed(
-                        ctx_or_interaction, 
-                        f"**{song['title']}** (Duration: {song['duration']})", 
-                        color=discord.Color.green(), 
-                        thumbnail=song['thumbnail'], 
-                        view=view
-                    )
-                    await self.play_music(ctx_or_interaction, guild_id)
+            logger.debug("_play: Not playing, will start now.")
+            await self.send_embed(
+                ctx_or_interaction, 
+                f"**{song['title']}** (Duration: {song['duration']})", 
+                color=discord.Color.green(), 
+                thumbnail=song['thumbnail'], 
+                view=view
+            )
+            await self.play_music(ctx_or_interaction, guild_id)
 
     @commands.command(name="pause", help="Pauses the current song being played")
     async def pause(self, ctx):
@@ -381,9 +399,9 @@ class MusicCog(commands.Cog):
         
         state = self.get_guild_state(guild_id)
         
-        if state.vc is not None and state.vc.is_playing():
+        if state.vc is not None and (state.vc.is_playing() or state.is_paused):
             state.vc.stop()
-            await self.play_music(ctx_or_interaction, guild_id)
+            # play_next is triggered automatically by the after callback
             await self.send_embed(ctx_or_interaction, "Skipped the current song", color=discord.Color.green())
         else:
             logger.warning("_skip: There is no current song playing to skip.")
