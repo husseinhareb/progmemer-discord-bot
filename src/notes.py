@@ -73,28 +73,16 @@ def get_tasks_by_user(user_id, task_date):
     return [(task[0], task[1], task[2]) for task in tasks]  # (id, task, status)
 
 
-def update_task_status(task, new_status, user_id, task_date):
-    """Update the status of a specific task."""
+def update_task_status(task_id, new_status):
+    """Update the status of a specific task by its ID."""
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
 
-
-        # Single query to check if task exists and is not already at the target status
-        c.execute("""SELECT id FROM tasks 
-                     WHERE task = ? AND user_id = ? AND date = ? AND status != ?""", 
-                  (task, user_id, task_date, new_status))
-        task_record = c.fetchone()
-
-        if task_record is None:
-            print(f"Task '{task}' either does not exist or is already set to '{new_status}'.")
-            return
-
-        # Use the ID we already have from the first query
-        task_id = task_record[0]
-
-        # Update task status
         c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
-        print(f"Task '{task}' successfully updated to status '{new_status}'.")
+        if c.rowcount == 0:
+            print(f"Task ID {task_id} not found or already set to '{new_status}'.")
+        else:
+            print(f"Task ID {task_id} successfully updated to status '{new_status}'.")
 
 
 def add_note(bot: commands.Bot):
@@ -166,17 +154,15 @@ async def update_task_status_command(interaction: discord.Interaction, task_inde
         return
 
     task_id, task, _ = tasks[task_index]
-    update_task_status(task, status, user_id, today)
+    update_task_status(task_id, status)
 
     # Re-fetch tasks to reflect updated status
     tasks = get_tasks_by_user(user_id, today)
     
-    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'. Here are your updated tasks:")
-    
     tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
-                             for index, (task_id, task_name, task_status) in enumerate(tasks))
+                             for index, (tid, task_name, task_status) in enumerate(tasks))
     
-    await interaction.followup.send(f"Here are your tasks for today:\n{tasks_message}")
+    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'.\n\nHere are your tasks for today:\n{tasks_message}")
 
 
 class StatusSelect(Select):
@@ -197,6 +183,17 @@ class StatusSelect(Select):
         await update_task_status_command(interaction, self.task_index, status)
 
 
+def _make_task_options(tasks):
+    """Create SelectOption list from tasks, truncating labels and limiting to 25."""
+    options = []
+    for index, (task_id, task, status) in enumerate(tasks[:25]):
+        label = f"{index + 1}. {task} ({status_emojis.get(status, '❓')})"
+        if len(label) > 100:
+            label = label[:97] + "..."
+        options.append(discord.SelectOption(label=label, value=str(index)))
+    return options
+
+
 def update_status(bot: commands.Bot):
     @bot.tree.command(name="update", description="Update the status of a task")
     async def update_status_(interaction: discord.Interaction):
@@ -212,10 +209,7 @@ def update_status(bot: commands.Bot):
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        task_options = [
-            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
-            for index, (task_id, task, status) in enumerate(tasks)
-        ]
+        task_options = _make_task_options(tasks)
         
         task_select = Select(placeholder="Select a task to update", options=task_options)
         view = View(timeout=120)  # 2 minute timeout
@@ -269,10 +263,7 @@ def remove_task(bot: commands.Bot):
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        task_options = [
-            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
-            for index, (task_id, task, status) in enumerate(tasks)
-        ]
+        task_options = _make_task_options(tasks)
         
         task_select = Select(placeholder="Select a task to remove", options=task_options)
         view = View(timeout=120)  # 2 minute timeout
@@ -331,10 +322,7 @@ def edit_task(bot: commands.Bot):
             await interaction.response.send_message("You have no tasks for today.")
             return
         
-        task_options = [
-            discord.SelectOption(label=f"{index + 1}. {task} ({status_emojis.get(status, '❓')})", value=str(index))
-            for index, (task_id, task, status) in enumerate(tasks)
-        ]
+        task_options = _make_task_options(tasks)
         
         task_select = Select(placeholder="Select a task to edit", options=task_options)
         view = View(timeout=120)  # 2 minute timeout

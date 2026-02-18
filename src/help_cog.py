@@ -3,11 +3,11 @@ from discord.ext import commands
 
 
 class HelpCog(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot, guild_prefixes=None):
         self.bot = bot
         self.help_message = ""
         self.text_channel_list = []
-        self.guild_prefixes = {}  # Per-guild prefix storage
+        self.guild_prefixes = guild_prefixes if guild_prefixes is not None else {}
         self.default_prefix = "!"
         self.set_message()
 

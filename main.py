@@ -32,7 +32,17 @@ intents.reactions = True
 intents.message_content = True
 intents.voice_states = True 
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Per-guild prefix storage (shared with HelpCog)
+guild_prefixes = {}
+DEFAULT_PREFIX = "!"
+
+def get_prefix(bot, message):
+    """Return the per-guild prefix, or the default for DMs."""
+    if message.guild and message.guild.id in guild_prefixes:
+        return guild_prefixes[message.guild.id]
+    return DEFAULT_PREFIX
+
+bot = commands.Bot(command_prefix=get_prefix, intents=intents)
 
 @bot.event
 async def on_ready():
@@ -64,7 +74,7 @@ remove_task(bot)
 edit_task(bot)
 async def main():
     async with bot:
-        await bot.add_cog(HelpCog(bot))  
+        await bot.add_cog(HelpCog(bot, guild_prefixes))  
         await bot.add_cog(MusicCog(bot)) 
         await bot.start(TOKEN)
 

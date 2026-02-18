@@ -125,11 +125,15 @@ class MusicCog(commands.Cog):
                 return None
             result = results[0]
             logger.debug(f"search_yt: Found video -> Title: {result['title']}, Link: {result['link']}")
+            thumbnails = result.get("thumbnails")
+            thumbnail_url = None
+            if thumbnails and len(thumbnails) > 0:
+                thumbnail_url = thumbnails[0].get("url")
             return {
                 'source': result["link"],
                 'title': result["title"],
                 'duration': result["duration"],
-                'thumbnail': result["thumbnails"][0]["url"] if result.get("thumbnails") else None
+                'thumbnail': thumbnail_url
             }
         except Exception as e:
             logger.error(f"search_yt: Failed to find or parse results. Error: {e}")
@@ -149,14 +153,13 @@ class MusicCog(commands.Cog):
             try:
                 data = await loop.run_in_executor(None, lambda: self.ytdl.extract_info(m_url, download=False))
                 logger.debug(f"play_next: Received data from ytdl -> {data.get('url', 'No URL')}")
+                song = data['url']
             except Exception as e:
                 logger.error(f"play_next: Error extracting info with yt-dlp -> {e}")
                 state.is_playing = False
                 state.current_song = None
                 return
             
-            song = data['url']
-
             if state.vc is None or not state.vc.is_connected():
                 logger.warning("play_next: Voice client disconnected, cannot play next song.")
                 state.is_playing = False
@@ -166,10 +169,12 @@ class MusicCog(commands.Cog):
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(song, **self.FFMPEG_OPTIONS))
             logger.debug("play_next: Attempting to play the next song.")
             
-            state.vc.play(
-                source, 
-                after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop)
-            )
+            def _after_play(error):
+                if error:
+                    logger.error(f"play_next: Playback error -> {error}")
+                asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop)
+
+            state.vc.play(source, after=_after_play)
         else:
             logger.debug("play_next: Queue is empty, stopping playback.")
             state.is_playing = False
@@ -205,19 +210,22 @@ class MusicCog(commands.Cog):
             try:
                 data = await loop.run_in_executor(None, lambda: self.ytdl.extract_info(m_url, download=False))
                 logger.debug(f"play_music: Extracted data from ytdl -> {data.get('url', 'No URL')}")
+                song = data['url']
             except Exception as e:
                 logger.error(f"play_music: Error extracting info with yt-dlp -> {e}")
                 await self.send_embed(ctx_or_interaction, f"Error extracting info: {str(e)}", title="Error", color=discord.Color.red())
                 return
 
-            song = data['url']
             source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(song, **self.FFMPEG_OPTIONS))
 
             logger.debug("play_music: Attempting to play the current song.")
-            state.vc.play(
-                source, 
-                after=lambda e: asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop)
-            )
+
+            def _after_play(error):
+                if error:
+                    logger.error(f"play_music: Playback error -> {error}")
+                asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop)
+
+            state.vc.play(source, after=_after_play)
             
             # Send embed showing the song title and duration
             await self.send_embed(
@@ -260,9 +268,15 @@ class MusicCog(commands.Cog):
     async def _play(self, ctx_or_interaction, query):
         logger.debug(f"_play: Attempting to play -> {query}")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             author = ctx_or_interaction.author
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             author = ctx_or_interaction.user
             guild_id = ctx_or_interaction.guild_id
             # Defer slash command response to avoid 3-second interaction timeout
@@ -427,8 +441,8 @@ class MusicCog(commands.Cog):
         
         state = self.get_guild_state(guild_id)
         
-        if state.vc is None or not state.vc.is_playing():
-            logger.warning("_lyrics: No song is currently playing.")
+        if state.vc is None or (not state.vc.is_playing() and not state.is_paused):
+            logger.warning("_lyrics: No song is currently playing or paused.")
             await self.send_embed(ctx_or_interaction, "No song is currently playing.", title="Error", color=discord.Color.red())
             return
 
