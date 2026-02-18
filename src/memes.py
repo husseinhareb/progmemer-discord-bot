@@ -133,6 +133,9 @@ def register_memes(bot: commands.Bot):
                 await interaction.followup.send("No new posts available at the moment. Please try again later.")
                 return
 
+            # Track post immediately to prevent duplicates from concurrent requests
+            sent_posts.append(post_info['id'])
+
             # Set embed color based on NSFW status
             embed_color = discord.Color.red() if post_info.get('nsfw', False) else discord.Color.blue()
             embed = discord.Embed(title=post_info['title'], url=post_info['url'], color=embed_color)
@@ -150,9 +153,6 @@ def register_memes(bot: commands.Bot):
 
             # Mark the message as NSFW if the post is NSFW
             await interaction.followup.send(embed=embed)
-
-            # Add post to deque (automatically removes oldest if at max capacity)
-            sent_posts.append(post_info['id'])
 
         except Exception as e:
             error_message = str(e).lower()

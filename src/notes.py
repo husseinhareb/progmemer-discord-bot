@@ -135,40 +135,30 @@ def get_note(bot: commands.Bot):
             await interaction.followup.send(f"You have no tasks for {task_date}.")
 
 
-async def update_task_status_command(interaction: discord.Interaction, task_index: int, status: str):
-    """Command to update the status of a task."""
+async def update_task_status_command(interaction: discord.Interaction, task_id: int, status: str):
+    """Command to update the status of a task by its database ID."""
     user_id = interaction.user.id
     today = date.today().isoformat()
 
     # Ensure database exists
     ensure_db_exists()
-    
-    tasks = get_tasks_by_user(user_id, today)
 
-    if not tasks:
-        await interaction.response.send_message("You have no tasks for today.")
-        return
-
-    if task_index < 0 or task_index >= len(tasks):
-        await interaction.response.send_message("Invalid task selection.")
-        return
-
-    task_id, task, _ = tasks[task_index]
     update_task_status(task_id, status)
 
     # Re-fetch tasks to reflect updated status
     tasks = get_tasks_by_user(user_id, today)
     
-    tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
-                             for index, (tid, task_name, task_status) in enumerate(tasks))
-    
-    await interaction.response.send_message(f"Task '{task}' status updated to '{status}'.\n\nHere are your tasks for today:\n{tasks_message}")
+    if tasks:
+        tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
+                                 for index, (tid, task_name, task_status) in enumerate(tasks))
+        await interaction.response.send_message(f"Task status updated to '{status}'.\n\nHere are your tasks for today:\n{tasks_message}")
+    else:
+        await interaction.response.send_message(f"Task status updated to '{status}'.")
 
 
 class StatusSelect(Select):
-    def __init__(self, tasks, task_index: int):
-        self.tasks = tasks
-        self.task_index = task_index
+    def __init__(self, task_id: int):
+        self.task_id = task_id
         
         options = [
             discord.SelectOption(label="To-Do", value="to-do", emoji="⬜"),
@@ -180,17 +170,18 @@ class StatusSelect(Select):
 
     async def callback(self, interaction: discord.Interaction):
         status = self.values[0]
-        await update_task_status_command(interaction, self.task_index, status)
+        await update_task_status_command(interaction, self.task_id, status)
 
 
 def _make_task_options(tasks):
-    """Create SelectOption list from tasks, truncating labels and limiting to 25."""
+    """Create SelectOption list from tasks, truncating labels and limiting to 25.
+    Uses task_id (DB primary key) as value for stability."""
     options = []
     for index, (task_id, task, status) in enumerate(tasks[:25]):
         label = f"{index + 1}. {task} ({status_emojis.get(status, '❓')})"
         if len(label) > 100:
             label = label[:97] + "..."
-        options.append(discord.SelectOption(label=label, value=str(index)))
+        options.append(discord.SelectOption(label=label, value=str(task_id)))
     return options
 
 
@@ -216,34 +207,30 @@ def update_status(bot: commands.Bot):
         view.add_item(task_select)
         
         async def task_select_callback(interaction: discord.Interaction):
-            selected_task_index = int(task_select.values[0])
-            status_select = StatusSelect(tasks=tasks, task_index=selected_task_index)
+            selected_task_id = int(task_select.values[0])
+            task_name = next((t[1] for t in tasks if t[0] == selected_task_id), "the task")
+            status_select = StatusSelect(task_id=selected_task_id)
             status_view = View(timeout=120)  # 2 minute timeout
             status_view.add_item(status_select)
-            await interaction.response.send_message(f"Please select the new status for '{tasks[selected_task_index][1]}'.", view=status_view)
+            await interaction.response.send_message(f"Please select the new status for '{task_name}'.", view=status_view)
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to update:", view=view)
 
 
-def remove_task_from_db(user_id, task_index, task_date):
-    """Function to remove a task by index."""
+def remove_task_from_db(user_id, task_id):
+    """Remove a task by its database ID, verifying ownership."""
     # Ensure database exists
     ensure_db_exists()
     
-    tasks = get_tasks_by_user(user_id, task_date)
-    
-    if not tasks:
-        return None
-    
-    if task_index < 0 or task_index >= len(tasks):
-        return "Invalid task selection."
-    
-    task_id, task_name, _ = tasks[task_index]
-    
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
-        c.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        c.execute("SELECT task FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
+        row = c.fetchone()
+        if row is None:
+            return "Task not found or already removed."
+        task_name = row[0]
+        c.execute("DELETE FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
     
     return f"Task '{task_name}' has been removed."
 
@@ -270,39 +257,28 @@ def remove_task(bot: commands.Bot):
         view.add_item(task_select)
         
         async def task_select_callback(interaction: discord.Interaction):
-            selected_task_index = int(task_select.values[0])
-            result = remove_task_from_db(user_id, selected_task_index, today)
-            
-            if result is None:
-                await interaction.response.send_message("Error: No tasks available to remove.")
-            elif result == "Invalid task selection.":
-                await interaction.response.send_message(result)
-            else:
-                await interaction.response.send_message(result)
+            selected_task_id = int(task_select.values[0])
+            result = remove_task_from_db(user_id, selected_task_id)
+            await interaction.response.send_message(result)
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to remove:", view=view)
 
 
-def edit_task_from_db(user_id, task_index, task_date, new_task_description):
-    """Edit a task description."""
+def edit_task_from_db(user_id, task_id, new_task_description):
+    """Edit a task description by its database ID, verifying ownership."""
     # Ensure database exists  
     ensure_db_exists()
     
-    tasks = get_tasks_by_user(user_id, task_date)
-    
-    if not tasks:
-        return None
-    
-    if task_index < 0 or task_index >= len(tasks):
-        return "Invalid task selection."
-    
-    task_id, task_name, status = tasks[task_index]
-    
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
-        c.execute("UPDATE tasks SET task = ? WHERE id = ?", 
-                  (new_task_description, task_id))
+        c.execute("SELECT task FROM tasks WHERE id = ? AND user_id = ?", (task_id, user_id))
+        row = c.fetchone()
+        if row is None:
+            return "Task not found."
+        task_name = row[0]
+        c.execute("UPDATE tasks SET task = ? WHERE id = ? AND user_id = ?", 
+                  (new_task_description, task_id, user_id))
     
     return f"Task '{task_name}' has been updated to '{new_task_description}'."
 
@@ -329,7 +305,7 @@ def edit_task(bot: commands.Bot):
         view.add_item(task_select)
         
         async def task_select_callback(interaction: discord.Interaction):
-            selected_task_index = int(task_select.values[0])
+            selected_task_id = int(task_select.values[0])
             
             await interaction.response.send_message(f"Please enter the new description for the task:")
             
@@ -340,7 +316,7 @@ def edit_task(bot: commands.Bot):
                 msg = await bot.wait_for('message', check=check, timeout=60)
                 new_task_description = msg.content
                 
-                result = edit_task_from_db(user_id, selected_task_index, today, new_task_description)
+                result = edit_task_from_db(user_id, selected_task_id, new_task_description)
                 
                 await interaction.followup.send(result)
             

@@ -9,10 +9,11 @@ async def fetch_weather(city):
     api_key = os.getenv('WEATHER_API')
     if not api_key:
         return None, None, None
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&appid={api_key}&units=metric"
+    url = "https://api.openweathermap.org/data/2.5/weather"
+    params = {"q": city, "appid": api_key, "units": "metric"}
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
+            async with session.get(url, params=params) as response:
                 if response.status == 200:
                     data = await response.json()
                     weather_description = data['weather'][0]['description']

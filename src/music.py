@@ -226,14 +226,6 @@ class MusicCog(commands.Cog):
                 asyncio.run_coroutine_threadsafe(self.play_next(guild_id), self.bot.loop)
 
             state.vc.play(source, after=_after_play)
-            
-            # Send embed showing the song title and duration
-            await self.send_embed(
-                ctx_or_interaction, 
-                f"**{song_title}**\nDuration: {song_duration}", 
-                color=discord.Color.green(), 
-                thumbnail=state.current_song[0]['thumbnail']
-            )
         else:
             logger.debug("play_music: Queue is empty, no song to play.")
             state.is_playing = False
@@ -244,8 +236,11 @@ class MusicCog(commands.Cog):
         if not current:
             return []
         try:
-            search = VideosSearch(current, limit=5)
-            results = search.result()["result"]
+            loop = asyncio.get_running_loop()
+            def _search():
+                search = VideosSearch(current, limit=5)
+                return search.result()["result"]
+            results = await loop.run_in_executor(None, _search)
             return [
                 app_commands.Choice(name=f"{video['title'][:80]} - {video['duration']}", value=video["link"])
                 for video in results
@@ -349,8 +344,14 @@ class MusicCog(commands.Cog):
     async def _pause(self, ctx_or_interaction):
         logger.debug("_pause: Attempting to pause.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)
@@ -378,8 +379,14 @@ class MusicCog(commands.Cog):
     async def _resume(self, ctx_or_interaction):
         logger.debug("_resume: Attempting to resume.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)
@@ -407,8 +414,14 @@ class MusicCog(commands.Cog):
     async def _skip(self, ctx_or_interaction):
         logger.debug("_skip: Attempting to skip current song.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)
@@ -435,8 +448,14 @@ class MusicCog(commands.Cog):
     async def _lyrics(self, ctx_or_interaction):
         logger.debug("_lyrics: Attempting to fetch lyrics.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)
@@ -501,8 +520,14 @@ class MusicCog(commands.Cog):
     async def _queue(self, ctx_or_interaction):
         logger.debug("_queue: Attempting to display queue.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)
@@ -533,8 +558,14 @@ class MusicCog(commands.Cog):
     async def _stop(self, ctx_or_interaction):
         logger.debug("_stop: Attempting to stop and clear queue.")
         if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild.id
         else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
             guild_id = ctx_or_interaction.guild_id
         
         state = self.get_guild_state(guild_id)

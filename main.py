@@ -43,15 +43,19 @@ def get_prefix(bot, message):
     return DEFAULT_PREFIX
 
 bot = commands.Bot(command_prefix=get_prefix, intents=intents)
+_tree_synced = False
 
 @bot.event
 async def on_ready():
+    global _tree_synced
     print("Bot is Up and Ready!")
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
-    except Exception as e:
-        print(e)
+    if not _tree_synced:
+        try:
+            synced = await bot.tree.sync()
+            print(f"Synced {len(synced)} command(s)")
+            _tree_synced = True
+        except Exception as e:
+            print(e)
 
 @bot.tree.command(name="hello", description="Greet the bot.")
 async def hello(interaction: discord.Interaction):

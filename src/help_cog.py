@@ -91,18 +91,18 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
         if not ctx.guild:
             await ctx.send("This command can only be used in a server.")
             return
-        # Refresh channel list for the current guild only
-        self.text_channel_list = [
+        # Refresh channel list for the current guild only (use local variable to avoid race conditions)
+        channels = [
             channel for channel in ctx.guild.text_channels 
             if channel.permissions_for(ctx.guild.me).send_messages
         ]
         
-        if not self.text_channel_list:
+        if not channels:
             await ctx.send("No text channels available to send messages to.")
             return
             
         sent_count = 0
-        for text_channel in self.text_channel_list:
+        for text_channel in channels:
             try:
                 await text_channel.send(msg)
                 sent_count += 1
