@@ -1,5 +1,42 @@
+import sqlite3
 import discord
 from discord.ext import commands
+from pathlib import Path
+
+# Reuse the same DB path as notes
+SCRIPT_DIR = Path(__file__).parent.parent.absolute()
+DB_FOLDER = SCRIPT_DIR / 'db'
+DB_FILE = DB_FOLDER / 'tasks.db'
+
+
+def _ensure_prefix_table():
+    """Create the guild_prefixes table if it doesn't exist."""
+    if not DB_FOLDER.exists():
+        DB_FOLDER.mkdir(parents=True)
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        conn.execute('''CREATE TABLE IF NOT EXISTS guild_prefixes (
+                            guild_id INTEGER PRIMARY KEY,
+                            prefix TEXT NOT NULL
+                        )''')
+
+
+def _load_prefixes() -> dict:
+    """Load all guild prefixes from the database."""
+    _ensure_prefix_table()
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        rows = conn.execute("SELECT guild_id, prefix FROM guild_prefixes").fetchall()
+    return {row[0]: row[1] for row in rows}
+
+
+def _save_prefix(guild_id: int, prefix: str):
+    """Save or update a guild's prefix in the database."""
+    _ensure_prefix_table()
+    with sqlite3.connect(str(DB_FILE)) as conn:
+        conn.execute(
+            "INSERT INTO guild_prefixes (guild_id, prefix) VALUES (?, ?) "
+            "ON CONFLICT(guild_id) DO UPDATE SET prefix = excluded.prefix",
+            (guild_id, prefix)
+        )
 
 
 class HelpCog(commands.Cog):
@@ -9,6 +46,9 @@ class HelpCog(commands.Cog):
         self.text_channel_list = []
         self.guild_prefixes = guild_prefixes if guild_prefixes is not None else {}
         self.default_prefix = "!"
+        # Load persisted prefixes into the shared dict
+        saved = _load_prefixes()
+        self.guild_prefixes.update(saved)
         self.set_message()
 
     def get_prefix(self, guild_id=None):
@@ -32,10 +72,10 @@ class HelpCog(commands.Cog):
 
 **Bot Commands:**
 {prefix}prefix <new_prefix> - changes the command prefix for this server
-{prefix}helppp - displays this help message
+{prefix}help - displays this help message
 
 **Slash Commands:**
-Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll, /add, /list, /update, /remove, /edit
+Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll, /add, /list, /update, /remove, /edit, /nowplaying
 """
 
     @commands.Cog.listener()
@@ -47,10 +87,10 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             if channel.permissions_for(guild.me).send_messages
         ]
         # Use correct command name in presence
-        await self.bot.change_presence(activity=discord.Game(f"type {self.default_prefix}helppp"))
+        await self.bot.change_presence(activity=discord.Game(f"type {self.default_prefix}help"))
 
-    @commands.command(name="helppp", help="Displays all the available commands")
-    async def helppp(self, ctx):
+    @commands.command(name="help", help="Displays all the available commands")
+    async def help(self, ctx):
         # Generate help message with the current guild's prefix
         prefix = self.get_prefix(ctx.guild.id if ctx.guild else None)
         self.set_message(prefix)
@@ -71,9 +111,10 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             await ctx.send("Prefix cannot be empty or whitespace only.")
             return
         
-        # Store per-guild prefix
+        # Store per-guild prefix (in memory and in database)
         if ctx.guild:
             self.guild_prefixes[ctx.guild.id] = new_prefix
+            _save_prefix(ctx.guild.id, new_prefix)
             await ctx.send(f"Prefix for this server set to **'{new_prefix}'**")
         else:
             # DM context - change default prefix

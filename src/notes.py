@@ -35,21 +35,26 @@ def ensure_db_exists():
                         task TEXT NOT NULL,
                         user_id INTEGER NOT NULL,
                         date TEXT NOT NULL,
-                        status TEXT DEFAULT 'to-do'
+                        status TEXT DEFAULT 'to-do',
+                        guild_id INTEGER DEFAULT 0
                     )''')
         c.execute('''CREATE TABLE IF NOT EXISTS users (
                         id INTEGER PRIMARY KEY,
                         username TEXT NOT NULL
                     )''')
+        # Migration: add guild_id column if missing (for existing databases)
+        columns = [row[1] for row in c.execute("PRAGMA table_info(tasks)").fetchall()]
+        if 'guild_id' not in columns:
+            c.execute("ALTER TABLE tasks ADD COLUMN guild_id INTEGER DEFAULT 0")
 
 
-def add_task_to_db(task, user_id, task_date, status='to-do'):
-    """Add a task for a specific user, date, and default status."""
+def add_task_to_db(task, user_id, task_date, guild_id=0, status='to-do'):
+    """Add a task for a specific user, date, guild and default status."""
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
-        c.execute("INSERT INTO tasks (task, user_id, date, status) VALUES (?, ?, ?, ?)", 
-                  (task, user_id, task_date, status))
-    print(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date}")
+        c.execute("INSERT INTO tasks (task, user_id, date, status, guild_id) VALUES (?, ?, ?, ?, ?)", 
+                  (task, user_id, task_date, status, guild_id))
+    print(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date} in guild {guild_id}")
 
 
 def add_user_to_db(user_id, username):
@@ -64,11 +69,11 @@ def add_user_to_db(user_id, username):
             print(f"Added user {username} with ID {user_id}")
 
 
-def get_tasks_by_user(user_id, task_date):
-    """Retrieve tasks by user and date with status and ID."""
+def get_tasks_by_user(user_id, task_date, guild_id=0):
+    """Retrieve tasks by user, date and guild with status and ID."""
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
-        c.execute("SELECT id, task, status FROM tasks WHERE user_id = ? AND date = ?", (user_id, task_date))
+        c.execute("SELECT id, task, status FROM tasks WHERE user_id = ? AND date = ? AND guild_id = ?", (user_id, task_date, guild_id))
         tasks = c.fetchall()
     return [(task[0], task[1], task[2]) for task in tasks]  # (id, task, status)
 

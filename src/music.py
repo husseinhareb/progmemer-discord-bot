@@ -579,12 +579,109 @@ class MusicCog(commands.Cog):
         state.vc = None
         await self.send_embed(ctx_or_interaction, "Stopped playing music and cleared the queue.", color=discord.Color.red())
 
+    # Now Playing
+    @app_commands.command(name="nowplaying", description="Shows the currently playing song")
+    async def slash_nowplaying(self, interaction: discord.Interaction):
+        logger.info("slash command:nowplaying called.")
+        await self._nowplaying(interaction)
+
+    @commands.command(name="nowplaying", aliases=["np"], help="Shows the currently playing song")
+    async def nowplaying(self, ctx):
+        logger.info("command:nowplaying called.")
+        await self._nowplaying(ctx)
+
+    async def _nowplaying(self, ctx_or_interaction):
+        logger.debug("_nowplaying: Attempting to show current song.")
+        if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
+            guild_id = ctx_or_interaction.guild.id
+        else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
+            guild_id = ctx_or_interaction.guild_id
+
+        state = self.get_guild_state(guild_id)
+
+        if state.current_song is not None and (state.is_playing or state.is_paused):
+            song = state.current_song[0]
+            status = "⏸️ Paused" if state.is_paused else "▶️ Playing"
+            view = MusicControlView(self, guild_id)
+            await self.send_embed(
+                ctx_or_interaction,
+                f"{status}: **{song['title']}**\nDuration: {song['duration']}",
+                title="Now Playing",
+                color=discord.Color.green(),
+                thumbnail=song.get('thumbnail'),
+                view=view
+            )
+        else:
+            await self.send_embed(ctx_or_interaction, "No song is currently playing.", color=discord.Color.red())
+
+    # Remove from queue
+    @app_commands.command(name="removequeue", description="Remove a song from the queue by position")
+    @app_commands.describe(position="Position in queue (1, 2, 3...)")
+    async def slash_removequeue(self, interaction: discord.Interaction, position: int):
+        logger.info(f"slash command:removequeue called with position {position}.")
+        await self._removequeue(interaction, position)
+
+    @commands.command(name="removequeue", aliases=["rq"], help="Remove a song from the queue by position")
+    async def removequeue(self, ctx, position: int):
+        logger.info(f"command:removequeue called with position {position}.")
+        await self._removequeue(ctx, position)
+
+    async def _removequeue(self, ctx_or_interaction, position: int):
+        logger.debug(f"_removequeue: Removing position {position} from queue.")
+        if isinstance(ctx_or_interaction, commands.Context):
+            if ctx_or_interaction.guild is None:
+                await ctx_or_interaction.send("Music commands can only be used in a server.")
+                return
+            guild_id = ctx_or_interaction.guild.id
+        else:
+            if ctx_or_interaction.guild_id is None:
+                await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
+                return
+            guild_id = ctx_or_interaction.guild_id
+
+        state = self.get_guild_state(guild_id)
+        index = position - 1
+
+        if index < 0 or index >= len(state.music_queue):
+            await self.send_embed(
+                ctx_or_interaction,
+                f"Invalid position. Queue has {len(state.music_queue)} song(s).",
+                title="Error",
+                color=discord.Color.red()
+            )
+            return
+
+        removed = state.music_queue.pop(index)
+        removed_title = removed[0]['title']
+        await self.send_embed(
+            ctx_or_interaction,
+            f"Removed **{removed_title}** from position #{position} in the queue.",
+            color=discord.Color.green()
+        )
+
 
 class MusicControlView(discord.ui.View):
     def __init__(self, cog: MusicCog, guild_id: int):
         super().__init__(timeout=300)  # 5 minute timeout
         self.cog = cog
         self.guild_id = guild_id
+
+    async def on_timeout(self):
+        """Disable all buttons when the view times out."""
+        for item in self.children:
+            item.disabled = True
+        # Try to edit the message to show disabled buttons
+        try:
+            if self.message:
+                await self.message.edit(view=self)
+        except Exception:
+            pass
 
     @discord.ui.button(label="Pause", style=discord.ButtonStyle.primary)
     async def pause_button(self, interaction: discord.Interaction, button: discord.ui.Button):
