@@ -94,6 +94,23 @@ class MusicCog(commands.Cog):
             del self.guild_states[guild.id]
             logger.info(f"Cleaned up music state for guild {guild.id}")
 
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Reset music state when the bot is disconnected from voice externally."""
+        if member.id != self.bot.user.id:
+            return
+        # Bot left a voice channel (kicked, moved out, or disconnected)
+        if before.channel is not None and after.channel is None:
+            guild_id = before.channel.guild.id
+            if guild_id in self.guild_states:
+                state = self.guild_states[guild_id]
+                state.is_playing = False
+                state.is_paused = False
+                state.music_queue.clear()
+                state.current_song = None
+                state.vc = None
+                logger.info(f"Bot was disconnected from voice in guild {guild_id}, state reset.")
+
     async def send_embed(self, ctx_or_interaction, description, title=None, color=discord.Color.purple(), thumbnail=None, view=None):
         logger.debug(f"send_embed: Sending Embed -> Title: {title}, Description: {description[:60]}...")
         embed = discord.Embed(description=description, color=color)

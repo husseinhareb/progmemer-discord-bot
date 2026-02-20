@@ -49,7 +49,6 @@ class HelpCog(commands.Cog):
         # Load persisted prefixes into the shared dict
         saved = _load_prefixes()
         self.guild_prefixes.update(saved)
-        self.set_message()
 
     def get_prefix(self, guild_id=None):
         """Get the prefix for a specific guild, or default."""
@@ -57,10 +56,10 @@ class HelpCog(commands.Cog):
             return self.guild_prefixes[guild_id]
         return self.default_prefix
 
-    def set_message(self, prefix=None):
+    def _build_help_message(self, prefix=None):
         if prefix is None:
             prefix = self.default_prefix
-        self.help_message = f"""
+        return f"""
 **Music Commands:**
 {prefix}play <song> - plays a song from YouTube
 {prefix}pause - pauses the current song
@@ -93,9 +92,10 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
     async def help(self, ctx):
         # Generate help message with the current guild's prefix
         prefix = self.get_prefix(ctx.guild.id if ctx.guild else None)
-        self.set_message(prefix)
-        await ctx.send(self.help_message)
+        help_text = self._build_help_message(prefix)
+        await ctx.send(help_text)
 
+    @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     @commands.command(name="prefix", help="Change bot prefix for this server")
     async def prefix(self, ctx, *args):
@@ -112,19 +112,16 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             return
         
         # Store per-guild prefix (in memory and in database)
-        if ctx.guild:
-            self.guild_prefixes[ctx.guild.id] = new_prefix
-            _save_prefix(ctx.guild.id, new_prefix)
-            await ctx.send(f"Prefix for this server set to **'{new_prefix}'**")
-        else:
-            # DM context - change default prefix
-            self.default_prefix = new_prefix
-            await ctx.send(f"Default prefix set to **'{new_prefix}'**")
+        self.guild_prefixes[ctx.guild.id] = new_prefix
+        _save_prefix(ctx.guild.id, new_prefix)
+        await ctx.send(f"Prefix for this server set to **'{new_prefix}'**")
 
     @prefix.error
     async def prefix_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
             await ctx.send("❌ You need 'Manage Server' permission to change the prefix.")
+        elif isinstance(error, commands.NoPrivateMessage):
+            await ctx.send("❌ This command can only be used in a server.")
 
     @commands.has_permissions(administrator=True)
     @commands.command(name="send_to_all", help="Send a message to all text channels in this server (Admin only)")
@@ -158,6 +155,8 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
     async def send_to_all_error(self, ctx, error):
         if isinstance(error, commands.MissingPermissions):
             await ctx.send("❌ You need administrator permissions to use this command.")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("❌ Please provide a message. Usage: `!send_to_all <message>`")
 
 
 async def setup(bot):

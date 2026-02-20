@@ -37,7 +37,7 @@ The bot is still under development, more commands will be added..
 ```
 ### Utility (Prefix Commands)
 ```
-!helppp - Displays all available commands.
+!help - Displays all available commands.
 !prefix <new_prefix> - Changes the command prefix for this server (requires Manage Server permission).
 !send_to_all <message> - Sends a message to all text channels in the server (Admin only).
 ```

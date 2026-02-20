@@ -78,14 +78,17 @@ def get_tasks_by_user(user_id, task_date, guild_id=0):
     return [(task[0], task[1], task[2]) for task in tasks]  # (id, task, status)
 
 
-def update_task_status(task_id, new_status):
-    """Update the status of a specific task by its ID."""
+def update_task_status(task_id, new_status, user_id=None):
+    """Update the status of a specific task by its ID, optionally verifying ownership."""
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
 
-        c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
+        if user_id is not None:
+            c.execute("UPDATE tasks SET status = ? WHERE id = ? AND user_id = ?", (new_status, task_id, user_id))
+        else:
+            c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
         if c.rowcount == 0:
-            print(f"Task ID {task_id} not found or already set to '{new_status}'.")
+            print(f"Task ID {task_id} not found or not owned by user.")
         else:
             print(f"Task ID {task_id} successfully updated to status '{new_status}'.")
 
@@ -148,7 +151,7 @@ async def update_task_status_command(interaction: discord.Interaction, task_id: 
     # Ensure database exists
     ensure_db_exists()
 
-    update_task_status(task_id, status)
+    update_task_status(task_id, status, user_id=user_id)
 
     # Re-fetch tasks to reflect updated status
     tasks = get_tasks_by_user(user_id, today)
@@ -211,13 +214,16 @@ def update_status(bot: commands.Bot):
         view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        async def task_select_callback(interaction: discord.Interaction):
+        async def task_select_callback(select_interaction: discord.Interaction):
+            if select_interaction.user.id != user_id:
+                await select_interaction.response.send_message("You cannot interact with this menu.", ephemeral=True)
+                return
             selected_task_id = int(task_select.values[0])
             task_name = next((t[1] for t in tasks if t[0] == selected_task_id), "the task")
             status_select = StatusSelect(task_id=selected_task_id)
             status_view = View(timeout=120)  # 2 minute timeout
             status_view.add_item(status_select)
-            await interaction.response.send_message(f"Please select the new status for '{task_name}'.", view=status_view)
+            await select_interaction.response.send_message(f"Please select the new status for '{task_name}'.", view=status_view)
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to update:", view=view)
@@ -261,10 +267,13 @@ def remove_task(bot: commands.Bot):
         view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        async def task_select_callback(interaction: discord.Interaction):
+        async def task_select_callback(select_interaction: discord.Interaction):
+            if select_interaction.user.id != user_id:
+                await select_interaction.response.send_message("You cannot interact with this menu.", ephemeral=True)
+                return
             selected_task_id = int(task_select.values[0])
             result = remove_task_from_db(user_id, selected_task_id)
-            await interaction.response.send_message(result)
+            await select_interaction.response.send_message(result)
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to remove:", view=view)
@@ -309,13 +318,16 @@ def edit_task(bot: commands.Bot):
         view = View(timeout=120)  # 2 minute timeout
         view.add_item(task_select)
         
-        async def task_select_callback(interaction: discord.Interaction):
+        async def task_select_callback(select_interaction: discord.Interaction):
+            if select_interaction.user.id != user_id:
+                await select_interaction.response.send_message("You cannot interact with this menu.", ephemeral=True)
+                return
             selected_task_id = int(task_select.values[0])
             
-            await interaction.response.send_message(f"Please enter the new description for the task:")
+            await select_interaction.response.send_message(f"Please enter the new description for the task:")
             
             def check(m):
-                return m.author.id == interaction.user.id and m.channel.id == interaction.channel_id
+                return m.author.id == user_id and m.channel.id == select_interaction.channel_id
             
             try:
                 msg = await bot.wait_for('message', check=check, timeout=60)
@@ -323,10 +335,10 @@ def edit_task(bot: commands.Bot):
                 
                 result = edit_task_from_db(user_id, selected_task_id, new_task_description)
                 
-                await interaction.followup.send(result)
+                await select_interaction.followup.send(result)
             
             except asyncio.TimeoutError:
-                await interaction.followup.send("You took too long to respond. Please try again.")
+                await select_interaction.followup.send("You took too long to respond. Please try again.")
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to edit:", view=view)
