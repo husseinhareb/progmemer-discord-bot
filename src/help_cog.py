@@ -43,7 +43,6 @@ class HelpCog(commands.Cog):
     def __init__(self, bot, guild_prefixes=None):
         self.bot = bot
         self.help_message = ""
-        self.text_channel_list = []
         self.guild_prefixes = guild_prefixes if guild_prefixes is not None else {}
         self.default_prefix = "!"
         # Load persisted prefixes into the shared dict
@@ -79,12 +78,6 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
 
     @commands.Cog.listener()
     async def on_ready(self):
-        # Populate text_channel_list with all text channels the bot has access to
-        self.text_channel_list = [
-            channel for guild in self.bot.guilds 
-            for channel in guild.text_channels 
-            if channel.permissions_for(guild.me).send_messages
-        ]
         # Use correct command name in presence
         await self.bot.change_presence(activity=discord.Game(f"type {self.default_prefix}help"))
 

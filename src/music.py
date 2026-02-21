@@ -119,18 +119,23 @@ class MusicCog(commands.Cog):
         if thumbnail:
             embed.set_thumbnail(url=thumbnail)
         
+        msg = None
         if isinstance(ctx_or_interaction, commands.Context):
-            await ctx_or_interaction.send(embed=embed, view=view)
+            msg = await ctx_or_interaction.send(embed=embed, view=view)
         else:
             # Handle interaction - check if already responded or deferred
             try:
                 if ctx_or_interaction.response.is_done():
                     # Already responded, use followup
-                    await ctx_or_interaction.followup.send(embed=embed, view=view)
+                    msg = await ctx_or_interaction.followup.send(embed=embed, view=view)
                 else:
-                    await ctx_or_interaction.response.send_message(embed=embed, view=view)
+                    msg = await ctx_or_interaction.response.send_message(embed=embed, view=view)
             except discord.errors.InteractionResponded:
-                await ctx_or_interaction.followup.send(embed=embed, view=view)
+                msg = await ctx_or_interaction.followup.send(embed=embed, view=view)
+        
+        # Store message reference on the view so on_timeout can disable buttons
+        if view is not None and msg is not None:
+            view.message = msg
 
     def search_yt(self, item):
         logger.debug(f"search_yt: Searching YouTube for '{item}'")
@@ -173,8 +178,9 @@ class MusicCog(commands.Cog):
                 song = data['url']
             except Exception as e:
                 logger.error(f"play_next: Error extracting info with yt-dlp -> {e}")
-                state.is_playing = False
                 state.current_song = None
+                # Skip to the next song instead of stopping the queue
+                await self.play_next(guild_id)
                 return
             
             if state.vc is None or not state.vc.is_connected():
@@ -220,6 +226,8 @@ class MusicCog(commands.Cog):
                     await state.vc.move_to(voice_channel)
             except Exception as e:
                 logger.error(f"play_music: Could not connect to or move to voice channel -> {e}")
+                state.is_playing = False
+                state.current_song = None
                 await self.send_embed(ctx_or_interaction, f"Could not connect to the voice channel: {str(e)}", title="Error", color=discord.Color.red())
                 return
 
@@ -230,6 +238,8 @@ class MusicCog(commands.Cog):
                 song = data['url']
             except Exception as e:
                 logger.error(f"play_music: Error extracting info with yt-dlp -> {e}")
+                state.is_playing = False
+                state.current_song = None
                 await self.send_embed(ctx_or_interaction, f"Error extracting info: {str(e)}", title="Error", color=discord.Color.red())
                 return
 
@@ -474,6 +484,9 @@ class MusicCog(commands.Cog):
                 await ctx_or_interaction.response.send_message("Music commands can only be used in a server.")
                 return
             guild_id = ctx_or_interaction.guild_id
+            # Defer slash command response to avoid 3-second interaction timeout
+            if not ctx_or_interaction.response.is_done():
+                await ctx_or_interaction.response.defer()
         
         state = self.get_guild_state(guild_id)
         

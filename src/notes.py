@@ -1,7 +1,6 @@
 import os
 import sqlite3
 import discord
-import asyncio
 from discord.ext import commands
 from discord import app_commands
 from datetime import date
@@ -297,6 +296,26 @@ def edit_task_from_db(user_id, task_id, new_task_description):
     return f"Task '{task_name}' has been updated to '{new_task_description}'."
 
 
+class EditTaskModal(discord.ui.Modal, title="Edit Task"):
+    """Modal dialog for entering a new task description."""
+    new_description = discord.ui.TextInput(
+        label="New Task Description",
+        style=discord.TextStyle.short,
+        required=True,
+        max_length=200,
+        placeholder="Enter the new description..."
+    )
+
+    def __init__(self, user_id: int, task_id: int):
+        super().__init__()
+        self.user_id = user_id
+        self.task_id = task_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        result = edit_task_from_db(self.user_id, self.task_id, self.new_description.value)
+        await interaction.response.send_message(result)
+
+
 def edit_task(bot: commands.Bot):
     @bot.tree.command(name="edit", description="Edit a task description")
     async def edit_task_(interaction: discord.Interaction):
@@ -323,22 +342,8 @@ def edit_task(bot: commands.Bot):
                 await select_interaction.response.send_message("You cannot interact with this menu.", ephemeral=True)
                 return
             selected_task_id = int(task_select.values[0])
-            
-            await select_interaction.response.send_message(f"Please enter the new description for the task:")
-            
-            def check(m):
-                return m.author.id == user_id and m.channel.id == select_interaction.channel_id
-            
-            try:
-                msg = await bot.wait_for('message', check=check, timeout=60)
-                new_task_description = msg.content
-                
-                result = edit_task_from_db(user_id, selected_task_id, new_task_description)
-                
-                await select_interaction.followup.send(result)
-            
-            except asyncio.TimeoutError:
-                await select_interaction.followup.send("You took too long to respond. Please try again.")
+            modal = EditTaskModal(user_id=user_id, task_id=selected_task_id)
+            await select_interaction.response.send_modal(modal)
         
         task_select.callback = task_select_callback
         await interaction.response.send_message("Please select the task you want to edit:", view=view)
