@@ -1,4 +1,5 @@
 import os
+import logging
 import sqlite3
 import discord
 from discord.ext import commands
@@ -6,6 +7,8 @@ from discord import app_commands
 from datetime import date
 from discord.ui import Select, View
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # Global dictionary for status emojis
@@ -25,7 +28,7 @@ def ensure_db_exists():
     """Ensure database and tables exist. Does not return a connection."""
     if not DB_FOLDER.exists():
         DB_FOLDER.mkdir(parents=True)
-        print(f"Created folder: {DB_FOLDER}")
+        logger.info(f"Created folder: {DB_FOLDER}")
 
     with sqlite3.connect(str(DB_FILE)) as conn:
         c = conn.cursor()
@@ -53,7 +56,7 @@ def add_task_to_db(task, user_id, task_date, guild_id=0, status='to-do'):
         c = conn.cursor()
         c.execute("INSERT INTO tasks (task, user_id, date, status, guild_id) VALUES (?, ?, ?, ?, ?)", 
                   (task, user_id, task_date, status, guild_id))
-    print(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date} in guild {guild_id}")
+    logger.info(f"Task '{task}' with status '{status}' added for user {user_id} on date {task_date} in guild {guild_id}")
 
 
 def add_user_to_db(user_id, username):
@@ -65,7 +68,7 @@ def add_user_to_db(user_id, username):
 
         if user is None:
             c.execute("INSERT INTO users (id, username) VALUES (?, ?)", (user_id, username))
-            print(f"Added user {username} with ID {user_id}")
+            logger.info(f"Added user {username} with ID {user_id}")
 
 
 def get_tasks_by_user(user_id, task_date, guild_id=0):
@@ -87,9 +90,9 @@ def update_task_status(task_id, new_status, user_id=None):
         else:
             c.execute("UPDATE tasks SET status = ? WHERE id = ?", (new_status, task_id))
         if c.rowcount == 0:
-            print(f"Task ID {task_id} not found or not owned by user.")
+            logger.warning(f"Task ID {task_id} not found or not owned by user.")
         else:
-            print(f"Task ID {task_id} successfully updated to status '{new_status}'.")
+            logger.info(f"Task ID {task_id} successfully updated to status '{new_status}'.")
 
 
 def add_note(bot: commands.Bot):
@@ -104,8 +107,10 @@ def add_note(bot: commands.Bot):
         # Ensure database exists
         ensure_db_exists()
         
+        guild_id = interaction.guild_id or 0
+
         add_user_to_db(user_id, username)
-        add_task_to_db(task, user_id, today)
+        add_task_to_db(task, user_id, today, guild_id=guild_id)
 
         await interaction.followup.send(f"Task '{task}' has been added for {username} with status 'to-do'.")
 
@@ -132,7 +137,8 @@ def get_note(bot: commands.Bot):
         ensure_db_exists()
         
         user_id = interaction.user.id
-        tasks = get_tasks_by_user(user_id, task_date)
+        guild_id = interaction.guild_id or 0
+        tasks = get_tasks_by_user(user_id, task_date, guild_id=guild_id)
 
         if tasks:
             tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(status, '❓')} {task}" 
@@ -145,6 +151,7 @@ def get_note(bot: commands.Bot):
 async def update_task_status_command(interaction: discord.Interaction, task_id: int, status: str):
     """Command to update the status of a task by its database ID."""
     user_id = interaction.user.id
+    guild_id = interaction.guild_id or 0
     today = date.today().isoformat()
 
     # Ensure database exists
@@ -153,7 +160,7 @@ async def update_task_status_command(interaction: discord.Interaction, task_id: 
     update_task_status(task_id, status, user_id=user_id)
 
     # Re-fetch tasks to reflect updated status
-    tasks = get_tasks_by_user(user_id, today)
+    tasks = get_tasks_by_user(user_id, today, guild_id=guild_id)
     
     if tasks:
         tasks_message = "\n".join(f"{index + 1}. {status_emojis.get(task_status, '❓')} {task_name}" 
@@ -196,12 +203,13 @@ def update_status(bot: commands.Bot):
     @bot.tree.command(name="update", description="Update the status of a task")
     async def update_status_(interaction: discord.Interaction):
         user_id = interaction.user.id
+        guild_id = interaction.guild_id or 0
         today = date.today().isoformat()
 
         # Ensure database exists
         ensure_db_exists()
         
-        tasks = get_tasks_by_user(user_id, today)
+        tasks = get_tasks_by_user(user_id, today, guild_id=guild_id)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")
@@ -249,12 +257,13 @@ def remove_task(bot: commands.Bot):
     @bot.tree.command(name="remove", description="Remove a to-do task for today")
     async def remove_task_(interaction: discord.Interaction):
         user_id = interaction.user.id
+        guild_id = interaction.guild_id or 0
         today = date.today().isoformat()
         
         # Ensure database exists
         ensure_db_exists()
         
-        tasks = get_tasks_by_user(user_id, today)
+        tasks = get_tasks_by_user(user_id, today, guild_id=guild_id)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")
@@ -320,12 +329,13 @@ def edit_task(bot: commands.Bot):
     @bot.tree.command(name="edit", description="Edit a task description")
     async def edit_task_(interaction: discord.Interaction):
         user_id = interaction.user.id
+        guild_id = interaction.guild_id or 0
         today = date.today().isoformat()
         
         # Ensure database exists
         ensure_db_exists()
         
-        tasks = get_tasks_by_user(user_id, today)
+        tasks = get_tasks_by_user(user_id, today, guild_id=guild_id)
         
         if not tasks:
             await interaction.response.send_message("You have no tasks for today.")

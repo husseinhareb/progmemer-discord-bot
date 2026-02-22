@@ -1,3 +1,4 @@
+import asyncio
 import aiohttp
 import discord
 from discord.ext import commands
@@ -14,18 +15,19 @@ def get_jokes(bot: commands.Bot):
         app_commands.Choice(name="Any", value="Any")
     ])
     async def joke(interaction: discord.Interaction, category: str = "Any"):
+        await interaction.response.defer()
         try:
-            async with aiohttp.ClientSession() as session:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
                 async with session.get(f'https://v2.jokeapi.dev/joke/{category}') as response:
                     response.raise_for_status()
-                    joke = await response.json()
-                    if joke.get('error'):
+                    data = await response.json()
+                    if data.get('error'):
                         joke_message = "Failed to retrieve joke. Please try again later."
-                    elif joke['type'] == 'single':
-                        joke_message = joke['joke']
+                    elif data['type'] == 'single':
+                        joke_message = data['joke']
                     else:
-                        joke_message = f"{joke['setup']} - **{joke['delivery']}**"
-        except (aiohttp.ClientError, aiohttp.ClientResponseError, KeyError):
+                        joke_message = f"{data['setup']} - **{data['delivery']}**"
+        except (aiohttp.ClientError, aiohttp.ClientResponseError, KeyError, asyncio.TimeoutError):
             joke_message = "Failed to retrieve joke. Please try again later."
 
-        await interaction.response.send_message(joke_message)
+        await interaction.followup.send(joke_message)

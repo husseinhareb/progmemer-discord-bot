@@ -140,7 +140,8 @@ Use `/` commands for more features: /hello, /say, /joke, /meme, /weather, /roll,
             except discord.Forbidden:
                 pass  # Skip channels where we lost permission
             except Exception as e:
-                print(f"Error sending to {text_channel}: {e}")
+                import logging
+                logging.getLogger(__name__).error(f"Error sending to {text_channel}: {e}")
         
         await ctx.send(f"Message sent to {sent_count} channels.")
 

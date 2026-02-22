@@ -86,7 +86,10 @@ async def hello(interaction: discord.Interaction):
 @bot.tree.command(name="say", description="Say something!")
 @app_commands.describe(something="What should I say?")
 async def say(interaction: discord.Interaction, something: str):
-    await interaction.response.send_message(f"{something}")
+    await interaction.response.send_message(
+        something,
+        allowed_mentions=discord.AllowedMentions.none()
+    )
 
 # Register commands
 get_jokes(bot)

@@ -129,7 +129,10 @@ class MusicCog(commands.Cog):
                     # Already responded, use followup
                     msg = await ctx_or_interaction.followup.send(embed=embed, view=view)
                 else:
-                    msg = await ctx_or_interaction.response.send_message(embed=embed, view=view)
+                    await ctx_or_interaction.response.send_message(embed=embed, view=view)
+                    # interaction.response.send_message returns None;
+                    # fetch the actual message so the view can edit it on timeout
+                    msg = await ctx_or_interaction.original_response()
             except discord.errors.InteractionResponded:
                 msg = await ctx_or_interaction.followup.send(embed=embed, view=view)
         
@@ -179,9 +182,23 @@ class MusicCog(commands.Cog):
             except Exception as e:
                 logger.error(f"play_next: Error extracting info with yt-dlp -> {e}")
                 state.current_song = None
-                # Skip to the next song instead of stopping the queue
-                await self.play_next(guild_id)
-                return
+                # Skip to the next song iteratively to avoid deep recursion
+                while len(state.music_queue) > 0:
+                    state.current_song = state.music_queue.pop(0)
+                    try:
+                        next_url = state.current_song[0]['source']
+                        data = await loop.run_in_executor(None, lambda u=next_url: self.ytdl.extract_info(u, download=False))
+                        song = data['url']
+                        break
+                    except Exception as e2:
+                        logger.error(f"play_next: Skipping failed song -> {e2}")
+                        state.current_song = None
+                        continue
+                else:
+                    # All remaining songs failed or queue empty
+                    state.is_playing = False
+                    state.current_song = None
+                    return
             
             if state.vc is None or not state.vc.is_connected():
                 logger.warning("play_next: Voice client disconnected, cannot play next song.")

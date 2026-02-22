@@ -1,5 +1,6 @@
 import os
 import random
+import logging
 import praw
 import discord
 from discord import app_commands
@@ -7,6 +8,8 @@ from discord.ext import commands
 from collections import deque
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,11 +20,11 @@ USER_AGENT = os.getenv('USER_AGENT')
 
 # Validate Reddit API credentials
 if not REDDIT_CLIENT_ID or not REDDIT_CLIENT_SECRET:
-    print("Warning: Reddit API credentials not configured. /meme command will not work.")
+    logger.warning("Reddit API credentials not configured. /meme command will not work.")
     reddit = None
 else:
     if not USER_AGENT:
-        print("Warning: USER_AGENT not configured. Using default user agent.")
+        logger.warning("USER_AGENT not configured. Using default user agent.")
     REDDIT_USER_AGENT = f'MyDiscordBot/1.0 (by /u/{USER_AGENT or "unknown"})'
 
     # Initialize Reddit with proper configuration for NSFW access
@@ -39,7 +42,7 @@ sent_posts = deque(maxlen=1000)  # Use deque with max length for automatic clean
 
 def fetch_top_posts(subreddit_name):
     if reddit is None:
-        print("Reddit API not configured")
+        logger.warning("Reddit API not configured")
         return []
     try:
         subreddit = reddit.subreddit(subreddit_name)
@@ -47,7 +50,7 @@ def fetch_top_posts(subreddit_name):
         top_posts = [post for post in top_posts if not post.stickied]
         return top_posts
     except Exception as e:
-        print(f"Error fetching posts from r/{subreddit_name}: {e}")
+        logger.error(f"Error fetching posts from r/{subreddit_name}: {e}")
         return []
 
 def get_unique_random_post_info(posts):
@@ -78,7 +81,7 @@ def get_unique_random_post_info(posts):
                 if hasattr(random_post, 'thumbnail') and random_post.thumbnail.startswith('http'):
                     image_url = random_post.thumbnail
     except Exception as e:
-        print(f"Error extracting image URL: {e}")
+        logger.error(f"Error extracting image URL: {e}")
     
     post_info = {
         "id": random_post.id,
@@ -161,5 +164,5 @@ def register_memes(bot: commands.Bot):
             elif 'private' in error_message or 'forbidden' in error_message:
                 await interaction.followup.send(f"❌ r/{subreddit} is private or restricted. Try a different subreddit.", ephemeral=True)
             else:
-                print(f"Error fetching from r/{subreddit}: {e}")
+                logger.error(f"Error fetching from r/{subreddit}: {e}")
                 await interaction.followup.send(f"❌ An error occurred while fetching from r/{subreddit}. Please try again.", ephemeral=True)
